@@ -891,6 +891,42 @@
   const tplUpdate = document.getElementById('tpl-update');
   let currentTpl = null;   // текущая загруженная схема (для «Обновить»)
 
+  // ---------- Общие схемы (Supabase) ----------
+  const SB_URL = 'https://eqjejfnzcpmwikaucuwn.supabase.co';
+  const SB_KEY = 'sb_publishable_c0bGt_p4OMxBwFE9rB3eSw_ldA_KB25';
+  const tplPublish = document.getElementById('tpl-publish');
+  let ownerId = null;
+  const sbHeaders = (extra) => Object.assign({ apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY }, extra || {});
+  async function sbFetch(path, opts) {
+    try { const r = await fetch(SB_URL + '/rest/v1/' + path, opts); if (!r.ok) return null; const t = await r.text(); return t ? JSON.parse(t) : []; }
+    catch (_) { return null; }
+  }
+  const myTgId = () => { try { return (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user.id : null; } catch (_) { return null; } };
+  const isOwner = () => { const me = myTgId(); return me != null && ownerId != null && String(me) === String(ownerId); };
+  const canPublish = () => ownerId == null || isOwner();
+  function updatePublishUI() { if (tplPublish) tplPublish.hidden = !canPublish(); }
+  async function loadOwnerId() {
+    const r = await sbFetch('app_config?select=value&key=eq.owner_id', { headers: sbHeaders() });
+    ownerId = (Array.isArray(r) && r[0]) ? r[0].value : null;
+    updatePublishUI();
+  }
+  async function claimOwner(id) {
+    await sbFetch('app_config', { method: 'POST', headers: sbHeaders({ 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }), body: JSON.stringify({ key: 'owner_id', value: String(id) }) });
+    ownerId = String(id);
+  }
+  async function loadPresets() {
+    const r = await sbFetch('presets?select=*&order=created_at.desc', { headers: sbHeaders() });
+    return Array.isArray(r) ? r : [];
+  }
+  async function publishPreset(name, frames) {
+    const id = 'p' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+    return sbFetch('presets', { method: 'POST', headers: sbHeaders({ 'Content-Type': 'application/json', Prefer: 'return=representation' }),
+      body: JSON.stringify({ id, name, frames, owner_id: String(ownerId || myTgId() || '') }) });
+  }
+  async function deletePreset(id) {
+    return sbFetch('presets?id=eq.' + encodeURIComponent(id), { method: 'DELETE', headers: sbHeaders() });
+  }
+
   function cloud() {
     try {
       if (tg && tg.CloudStorage && tg.CloudStorage.getItem && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) return tg.CloudStorage;
@@ -973,6 +1009,17 @@
     renderTemplateList(); haptic('medium'); toast('Схема обновлена');
   });
 
+  if (tplPublish) tplPublish.addEventListener('click', async () => {
+    let name = (tplName.value || '').trim();
+    if (!name) name = (currentTpl && currentTpl.name) || ('Общая ' + (Date.now() % 10000));
+    toast('Публикую…');
+    const res = await publishPreset(name, JSON.parse(JSON.stringify(state.frames)));
+    if (!res) { toast('Не удалось опубликовать'); return; }
+    if (ownerId == null) { const me = myTgId(); if (me != null) { await claimOwner(me); updatePublishUI(); } }
+    haptic('medium'); toast('Опубликовано в общие');
+    renderTemplateList();
+  });
+
   function migrateFrames(frames) {
     for (const f of frames) {
       if (!f || !Array.isArray(f.drawings)) continue;
@@ -1004,53 +1051,75 @@
     renderTemplateList(); haptic('rigid'); toast('Схема удалена');
   }
 
-  // Пустая ли доска (один стандартный кадр без рисунков) — тогда склейка её заменяет
   function isBlankBoard() {
     return state.frames.length === 1 && (state.frames[0].drawings || []).length === 0 &&
       JSON.stringify(state.frames[0].tokens) === JSON.stringify(defaultTokens());
   }
-  // Склейка: добавить кадры схемы к текущей доске
-  async function appendTemplate(id) {
-    const tpl = (await loadTemplates()).find((t) => t.id === id);
-    if (!tpl) return;
-    let frames = tpl.frames;
-    if (!frames || !frames.length) frames = [{ tokens: tpl.tokens || defaultTokens(), drawings: tpl.drawings || [] }];
-    const add = migrateFrames(JSON.parse(JSON.stringify(frames)));
-    pushUndo();
-    if (isBlankBoard()) {
-      state.frames = add;
-      currentTpl = { id: tpl.id, name: tpl.name }; tplUpdate.hidden = false;
-      loadFrame(0);
-    } else {
-      const start = state.frames.length;
-      state.frames.push(...add);
-      loadFrame(start);
-    }
-    render(); updateFrameUI();
-    haptic('medium'); toast('Добавлено кадров: ' + add.length + ' (всего ' + state.frames.length + ')');
+  function framesOf(tpl) {
+    let f = tpl.frames;
+    if (!f || !f.length) f = [{ tokens: tpl.tokens || defaultTokens(), drawings: tpl.drawings || [] }];
+    return migrateFrames(JSON.parse(JSON.stringify(f)));
   }
+  function appendFrames(add) {
+    pushUndo();
+    if (isBlankBoard()) { state.frames = add; loadFrame(0); }
+    else { const start = state.frames.length; state.frames.push(...add); loadFrame(start); }
+    render(); updateFrameUI(); haptic('medium'); toast('Добавлено кадров: ' + add.length + ' (всего ' + state.frames.length + ')');
+  }
+  async function appendTemplate(id) { const tpl = (await loadTemplates()).find((t) => t.id === id); if (tpl) appendFrames(framesOf(tpl)); }
+  function appendPreset(tpl) { appendFrames(framesOf(tpl)); }
+  function openPreset(tpl) {
+    pushUndo();
+    state.frames = framesOf(tpl); currentTpl = null;
+    loadFrame(0); render(); updateFrameUI(); closeSheet(); haptic('medium'); toast('Загружена: ' + tpl.name);
+  }
+  async function deleteSharedPreset(id) { await deletePreset(id); renderTemplateList(); haptic('rigid'); toast('Общая схема удалена'); }
+
   function fmtDate(ts) {
     try {
       const d = new Date(ts);
       return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' }) + ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     } catch (_) { return ''; }
   }
+  function makeRow(tpl, opts) {
+    const row = document.createElement('div'); row.className = 'tpl-row';
+    const nFrames = tpl.frames ? tpl.frames.length : 1;
+    const del = opts.canDelete ? '<button class="tpl-del" aria-label="Удалить"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg></button>' : '';
+    row.innerHTML = '<div class="tpl-open"><div class="tpl-nm"></div><div class="tpl-meta">' + fmtDate(tpl.createdAt || tpl.created_at) + ' · ' + nFrames + ' кадр.</div></div>' +
+      '<button class="tpl-add" aria-label="Добавить кадры" title="Добавить кадры к текущей"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>' + del;
+    row.querySelector('.tpl-nm').textContent = tpl.name;
+    row.querySelector('.tpl-open').addEventListener('click', opts.onOpen);
+    row.querySelector('.tpl-add').addEventListener('click', (ev) => { ev.stopPropagation(); opts.onAppend(); });
+    if (opts.canDelete) row.querySelector('.tpl-del').addEventListener('click', (ev) => { ev.stopPropagation(); opts.onDelete(); });
+    return row;
+  }
+  function sectionHeader(text) { const d = document.createElement('div'); d.className = 'tpl-section'; d.textContent = text; return d; }
+
   async function renderTemplateList() {
     tplList.innerHTML = '<div class="tpl-empty">Загрузка…</div>';
-    const list = await loadTemplates();
+    const [shared, mine] = await Promise.all([loadPresets(), loadTemplates(), loadOwnerId()]);
     tplList.innerHTML = '';
-    if (!list.length) { const e = document.createElement('div'); e.className = 'tpl-empty'; e.textContent = 'Пока нет сохранённых схем. Расставь кадры и нажми «Сохранить».'; tplList.appendChild(e); return; }
-    for (const tpl of list) {
-      const row = document.createElement('div'); row.className = 'tpl-row';
-      const nFrames = tpl.frames ? tpl.frames.length : 1;
-      row.innerHTML = '<div class="tpl-open"><div class="tpl-nm"></div><div class="tpl-meta">' + fmtDate(tpl.createdAt) + ' · ' + nFrames + ' кадр.</div></div>' +
-        '<button class="tpl-add" aria-label="Добавить кадры" title="Добавить кадры этой схемы к текущей"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>' +
-        '<button class="tpl-del" aria-label="Удалить"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg></button>';
-      row.querySelector('.tpl-nm').textContent = tpl.name;
-      row.querySelector('.tpl-open').addEventListener('click', () => openTemplate(tpl.id));
-      row.querySelector('.tpl-add').addEventListener('click', (ev) => { ev.stopPropagation(); appendTemplate(tpl.id); });
-      row.querySelector('.tpl-del').addEventListener('click', (ev) => { ev.stopPropagation(); deleteTemplate(tpl.id); });
-      tplList.appendChild(row);
+    if (shared.length) {
+      tplList.appendChild(sectionHeader('ОБЩИЕ СХЕМЫ'));
+      for (const tpl of shared) tplList.appendChild(makeRow(tpl, {
+        canDelete: canPublish(),
+        onOpen: () => openPreset(tpl),
+        onAppend: () => appendPreset(tpl),
+        onDelete: () => deleteSharedPreset(tpl.id),
+      }));
+    }
+    tplList.appendChild(sectionHeader('МОИ СХЕМЫ'));
+    if (!mine.length) {
+      const e = document.createElement('div'); e.className = 'tpl-empty';
+      e.textContent = 'Пока нет своих схем. Расставь кадры и нажми «Сохранить».';
+      tplList.appendChild(e);
+    } else {
+      for (const tpl of mine) tplList.appendChild(makeRow(tpl, {
+        canDelete: true,
+        onOpen: () => openTemplate(tpl.id),
+        onAppend: () => appendTemplate(tpl.id),
+        onDelete: () => deleteTemplate(tpl.id),
+      }));
     }
   }
 
@@ -1134,5 +1203,6 @@
   for (const b of stylesEl.children) b.classList.toggle('active', b.dataset.dash === state.dash);
   for (const b of widthsEl.children) b.classList.toggle('active', b.dataset.width === state.width);
   migrateLocalToCloud();
+  loadOwnerId();
   requestAnimationFrame(resize);
 })();
