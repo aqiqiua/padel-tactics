@@ -184,8 +184,8 @@
   function hatchRect(rx, ry, rw, rh) {
     gfx.save();
     gfx.beginPath(); gfx.rect(rx, ry, rw, rh); gfx.clip();
-    gfx.strokeStyle = 'rgba(226,232,240,0.5)'; gfx.lineWidth = 1;
-    const s = 5, span = rw + rh;
+    gfx.strokeStyle = 'rgba(210,222,235,0.22)'; gfx.lineWidth = 1;
+    const s = 8, span = rw + rh;
     for (let i = -rh; i < span; i += s) {
       gfx.beginPath(); gfx.moveTo(rx + i, ry + rh); gfx.lineTo(rx + i + rh, ry); gfx.stroke();
       gfx.beginPath(); gfx.moveTo(rx + i, ry); gfx.lineTo(rx + i + rh, ry + rh); gfx.stroke();
@@ -194,22 +194,19 @@
   }
   // Панель стекла — гладкая тёмно-синяя с бликом
   function glassPanel(rx, ry, rw, rh) {
-    gfx.fillStyle = '#2a3a58';
+    gfx.fillStyle = '#243349';
     gfx.fillRect(rx, ry, rw, rh);
-    gfx.fillStyle = 'rgba(255,255,255,0.06)';
-    gfx.fillRect(rx, ry, rw, rh * 0.48);
-    gfx.strokeStyle = 'rgba(180,210,238,0.28)'; gfx.lineWidth = 1;
-    gfx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
+    gfx.fillStyle = 'rgba(255,255,255,0.03)';
+    gfx.fillRect(rx, ry, rw, rh * 0.45);
   }
-  // Чёрная балка-пост с гранями
+  // Чёрная балка-пост
   function beamPost(rx, ry, rw, rh) {
-    gfx.fillStyle = '#04060b'; gfx.fillRect(rx, ry, rw, rh);
-    gfx.fillStyle = 'rgba(132,145,163,0.26)'; gfx.fillRect(rx, ry, rw, Math.max(1.2, rh * 0.24));
-    gfx.fillStyle = 'rgba(0,0,0,0.5)'; gfx.fillRect(rx, ry + rh - Math.max(1, rh * 0.2), rw, Math.max(1, rh * 0.2));
+    gfx.fillStyle = '#0b111c'; gfx.fillRect(rx, ry, rw, rh);
+    gfx.fillStyle = 'rgba(120,134,152,0.14)'; gfx.fillRect(rx, ry, rw, Math.max(1, rh * 0.18));
   }
   function drawEnclosure(x, y, w, h) {
-    const ft = Math.max(9, w * 0.055);        // толщина рамы
-    const pw = Math.max(4, ft * 0.5);         // толщина балки-поста
+    const ft = Math.max(6, w * 0.036);        // толщина рамы (тоньше)
+    const pw = Math.max(3, ft * 0.5);         // толщина балки-поста
 
     // 1. чёрная база рамы
     gfx.fillStyle = '#06090f';
@@ -253,10 +250,8 @@
     beamPost(x + w + ft - cp, y + h + ft - cp, cp, cp);
 
     // 6. грани рамы
-    gfx.lineWidth = 2; gfx.strokeStyle = 'rgba(0,0,0,0.95)';
+    gfx.lineWidth = 1.5; gfx.strokeStyle = 'rgba(0,0,0,0.75)';
     gfx.strokeRect(x - ft, y - ft, w + 2 * ft, h + 2 * ft);
-    gfx.lineWidth = 1.5; gfx.strokeStyle = 'rgba(0,0,0,0.5)';
-    gfx.strokeRect(x - 0.75, y - 0.75, w + 1.5, h + 1.5);
   }
 
   // ---------- Корт ----------
@@ -266,13 +261,13 @@
 
     // свечение
     gfx.save();
-    gfx.shadowColor = 'rgba(20,184,166,0.5)'; gfx.shadowBlur = Math.max(14, w * 0.06);
-    gfx.fillStyle = '#123f45'; gfx.fillRect(x, y, w, h);
+    gfx.shadowColor = 'rgba(20,184,166,0.4)'; gfx.shadowBlur = Math.max(14, w * 0.06);
+    gfx.fillStyle = '#347e84'; gfx.fillRect(x, y, w, h);
     gfx.restore();
 
-    // покрытие + затемнение у задних стен
-    gfx.fillStyle = '#123f45'; gfx.fillRect(x, y, w, h);
-    gfx.fillStyle = 'rgba(0,0,0,0.18)';
+    // покрытие + лёгкое затемнение у задних стен
+    gfx.fillStyle = '#347e84'; gfx.fillRect(x, y, w, h);
+    gfx.fillStyle = 'rgba(0,0,0,0.10)';
     gfx.fillRect(x, y, w, h * 0.14); gfx.fillRect(x, y + h * 0.86, w, h * 0.14);
 
     drawEnclosure(x, y, w, h);
