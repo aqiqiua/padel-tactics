@@ -321,16 +321,19 @@
     gfx.setLineDash([]);
   }
 
-  function drawArrowEnd(d) {
-    const n = d.points.length;
-    const end = toPx(d.points[n - 1]);
-    let ref = null;
-    for (let i = n - 2; i >= 0; i--) {
-      const p = toPx(d.points[i]);
-      if (Math.hypot(end.x - p.x, end.y - p.y) > 10) { ref = p; break; }
-    }
-    if (!ref) ref = toPx(d.points[0]);
-    drawArrowHead(ref, end, d.width);
+  // Стрелка: прямая from→to с контрольной точкой (off — смещение от середины).
+  // off = {0,0} → прямая; сдвиг контрольной точки выгибает дугу (кривая Безье).
+  function arrowCtrl(d) {
+    const ox = d.off ? d.off.x : 0, oy = d.off ? d.off.y : 0;
+    return { x: (d.from.x + d.to.x) / 2 + ox, y: (d.from.y + d.to.y) / 2 + oy };
+  }
+  function drawArrow(d) {
+    if (!d.from || !d.to) return;
+    const a = toPx(d.from), b = toPx(d.to), c = toPx(arrowCtrl(d));
+    gfx.strokeStyle = d.color; gfx.fillStyle = d.color;
+    gfx.lineWidth = d.width; gfx.lineCap = 'round'; gfx.lineJoin = 'round';
+    gfx.beginPath(); gfx.moveTo(a.x, a.y); gfx.quadraticCurveTo(c.x, c.y, b.x, b.y); gfx.stroke();
+    drawArrowHead(c, b, d.width);
   }
   function drawArrowHead(a, b, w) {
     const ang = Math.atan2(b.y - a.y, b.x - a.x);
@@ -344,11 +347,12 @@
 
   function drawDrawing(d) {
     if (d.type === 'zone') { drawZone(d); return; }
+    if (d.type === 'arrow') { drawArrow(d); return; }
+    // кисть (pen)
     gfx.strokeStyle = d.color; gfx.fillStyle = d.color;
     gfx.lineWidth = d.width; gfx.lineCap = 'round'; gfx.lineJoin = 'round';
     if (d.points.length < 2) { const p = toPx(d.points[0]); dot(p.x, p.y, d.width / 2); return; }
     tracePoints(d.points); gfx.stroke();
-    if (d.type === 'arrow') drawArrowEnd(d);
   }
 
   function drawSelectionGlow(d) {
@@ -357,6 +361,10 @@
     if (d.type === 'zone') {
       const { x, y, w, h, r } = zoneRect(d);
       gfx.lineWidth = 6; roundRectPath(x, y, w, h, r); gfx.stroke();
+    } else if (d.type === 'arrow') {
+      const a = toPx(d.from), b = toPx(d.to), c = toPx(arrowCtrl(d));
+      gfx.lineWidth = d.width + 9;
+      gfx.beginPath(); gfx.moveTo(a.x, a.y); gfx.quadraticCurveTo(c.x, c.y, b.x, b.y); gfx.stroke();
     } else if (d.points.length < 2) {
       const p = toPx(d.points[0]); gfx.fillStyle = 'rgba(52,211,153,0.5)'; dot(p.x, p.y, (d.width + 9) / 2);
     } else {
@@ -373,6 +381,13 @@
       const corners = [{ x: nx0, y: ny0 }, { x: nx1, y: ny0 }, { x: nx0, y: ny1 }, { x: nx1, y: ny1 }];
       return corners.map((c, i) => ({ px: toPx(c), kind: 'corner', opposite: corners[3 - i] }));
     }
+    if (d.type === 'arrow') {
+      return [
+        { px: toPx(d.from), kind: 'from' },
+        { px: toPx(d.to), kind: 'to' },
+        { px: toPx(arrowCtrl(d)), kind: 'ctrl' },
+      ];
+    }
     const last = d.points.length - 1;
     return [
       { px: toPx(d.points[0]), kind: 'pt', i: 0 },
@@ -381,9 +396,10 @@
   }
   function drawHandles(d) {
     for (const h of handlesPx(d)) {
-      gfx.beginPath(); gfx.arc(h.px.x, h.px.y, 7, 0, Math.PI * 2);
-      gfx.fillStyle = '#F4F7FB'; gfx.fill();
-      gfx.lineWidth = 2.5; gfx.strokeStyle = '#34D399'; gfx.stroke();
+      const ctrl = h.kind === 'ctrl';
+      gfx.beginPath(); gfx.arc(h.px.x, h.px.y, ctrl ? 6 : 7, 0, Math.PI * 2);
+      gfx.fillStyle = ctrl ? '#34D399' : '#F4F7FB'; gfx.fill();
+      gfx.lineWidth = 2.5; gfx.strokeStyle = ctrl ? '#F4F7FB' : '#34D399'; gfx.stroke();
     }
   }
 
@@ -487,11 +503,17 @@
 
     select(null);
     const n = normPt(pos.x, pos.y);
-    if (state.tool === 'pen' || state.tool === 'arrow') {
+    if (state.tool === 'pen') {
       pushUndo();
-      const d = { type: state.tool, color: state.color, width: WIDTHS[state.width], points: [n] };
+      const d = { type: 'pen', color: state.color, width: WIDTHS[state.width], points: [n] };
       state.drawings.push(d);
       active = { pointerId: e.pointerId, mode: 'path', drawing: d, undoPushed: true };
+    } else if (state.tool === 'arrow') {
+      pushUndo();
+      const d = { type: 'arrow', color: state.color, width: WIDTHS[state.width], from: n, to: { x: n.x, y: n.y }, off: { x: 0, y: 0 } };
+      state.drawings.push(d);
+      active = { pointerId: e.pointerId, mode: 'arrow', drawing: d, undoPushed: true };
+      render();
     } else if (state.tool === 'zone') {
       pushUndo();
       const d = { type: 'zone', color: state.color, from: n, to: { x: n.x, y: n.y } };
@@ -517,13 +539,18 @@
       active.last = n; render();
     } else if (active.mode === 'handle') {
       const n = normPt(pos.x, pos.y);
-      const d = active.drawing;
+      const d = active.drawing, k = active.h.kind;
       if (d.type === 'zone') { d.from = { x: active.h.opposite.x, y: active.h.opposite.y }; d.to = { x: n.x, y: n.y }; }
+      else if (d.type === 'arrow') {
+        if (k === 'from') d.from = { x: n.x, y: n.y };
+        else if (k === 'to') d.to = { x: n.x, y: n.y };
+        else d.off = { x: n.x - (d.from.x + d.to.x) / 2, y: n.y - (d.from.y + d.to.y) / 2 };
+      }
       else { d.points[active.h.i] = n; }
       render();
     } else if (active.mode === 'path') {
       active.drawing.points.push(normPt(pos.x, pos.y)); render();
-    } else if (active.mode === 'zone') {
+    } else if (active.mode === 'arrow' || active.mode === 'zone') {
       active.drawing.to = normPt(pos.x, pos.y); render();
     } else if (active.mode === 'erase') {
       eraseAt(pos.x, pos.y);
@@ -536,6 +563,13 @@
     if (mode === 'path') {
       const d = active.drawing, pushed = active.undoPushed; active = null;
       if (d.points.length < 2 || pathLenPx(d) < 6) { if (pushed) undoStack.pop(); removeDrawing(d); render(); }
+      else finishDraw(d);
+      return;
+    }
+    if (mode === 'arrow') {
+      const d = active.drawing, pushed = active.undoPushed; active = null;
+      const a = toPx(d.from), b = toPx(d.to);
+      if (Math.hypot(b.x - a.x, b.y - a.y) < 10) { if (pushed) undoStack.pop(); removeDrawing(d); render(); }
       else finishDraw(d);
       return;
     }
@@ -561,7 +595,7 @@
     return L;
   }
   function translateDrawing(d, dx, dy) {
-    if (d.type === 'zone') { d.from.x += dx; d.from.y += dy; d.to.x += dx; d.to.y += dy; }
+    if (d.type === 'zone' || d.type === 'arrow') { d.from.x += dx; d.from.y += dy; d.to.x += dx; d.to.y += dy; }
     else for (const p of d.points) { p.x += dx; p.y += dy; }
   }
   function removeDrawing(d) {
@@ -578,6 +612,17 @@
       const a = toPx(d.from), b = toPx(d.to);
       return px >= Math.min(a.x, b.x) - thr && px <= Math.max(a.x, b.x) + thr &&
              py >= Math.min(a.y, b.y) - thr && py <= Math.max(a.y, b.y) + thr;
+    }
+    if (d.type === 'arrow') {
+      const a = toPx(d.from), b = toPx(d.to), c = toPx(arrowCtrl(d));
+      let prev = a;
+      for (let i = 1; i <= 14; i++) {
+        const t = i / 14, mt = 1 - t;
+        const cur = { x: mt * mt * a.x + 2 * mt * t * c.x + t * t * b.x, y: mt * mt * a.y + 2 * mt * t * c.y + t * t * b.y };
+        if (distToSeg(px, py, prev, cur) <= thr) return true;
+        prev = cur;
+      }
+      return false;
     }
     if (d.points.length === 1) { const a = toPx(d.points[0]); return Math.hypot(px - a.x, py - a.y) <= thr; }
     for (let i = 1; i < d.points.length; i++) {
@@ -618,7 +663,7 @@
     render();
   }
   function bboxPx(d) {
-    const pts = d.type === 'zone' ? [d.from, d.to] : d.points;
+    const pts = d.type === 'zone' ? [d.from, d.to] : (d.type === 'arrow' ? [d.from, d.to, arrowCtrl(d)] : d.points);
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const n of pts) { const p = toPx(n); minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }
     return { minX, minY, maxX, maxY };
@@ -724,13 +769,30 @@
     haptic('medium'); toast('Схема сохранена');
   });
 
+  // Совместимость: конвертируем стрелки старого формата (points) в from/to/off
+  function migrateFrames(frames) {
+    for (const f of frames) {
+      if (!f || !Array.isArray(f.drawings)) continue;
+      for (const d of f.drawings) {
+        if (d && d.type === 'arrow' && Array.isArray(d.points) && d.points.length) {
+          const p = d.points;
+          d.from = { x: p[0].x, y: p[0].y };
+          d.to = { x: p[p.length - 1].x, y: p[p.length - 1].y };
+          d.off = { x: 0, y: 0 };
+          delete d.points;
+        }
+      }
+    }
+    return frames;
+  }
+
   function openTemplate(id) {
     const tpl = loadTemplates().find((t) => t.id === id);
     if (!tpl) return;
     let frames = tpl.frames;
     if (!frames || !frames.length) frames = [{ tokens: tpl.tokens || defaultTokens(), drawings: tpl.drawings || [] }];
     pushUndo();
-    state.frames = JSON.parse(JSON.stringify(frames));
+    state.frames = migrateFrames(JSON.parse(JSON.stringify(frames)));
     loadFrame(0);
     render(); updateFrameUI(); closeSheet();
     haptic('medium'); toast('Схема загружена');
