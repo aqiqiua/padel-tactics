@@ -202,6 +202,9 @@ html, body {
 .tpl-del { flex: none; width: 38px; height: 38px; border: none; border-radius: 10px; background: transparent; color: #fb7185; display: grid; place-items: center; cursor: pointer; }
 .tpl-del:active { background: rgba(251,113,133,0.14); }
 .tpl-del svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tpl-add { flex: none; width: 38px; height: 38px; border: none; border-radius: 10px; background: transparent; color: var(--accent); display: grid; place-items: center; cursor: pointer; }
+.tpl-add:active { background: var(--glass-2); }
+.tpl-add svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .tpl-empty { padding: 30px 16px; text-align: center; color: var(--hint); font: 500 13px/1.5 var(--font-ui); }
 
 /* ---------- Тост ---------- */

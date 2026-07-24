@@ -105,6 +105,16 @@
     loadFrame(state.current + 1);
     render(); updateFrameUI(); haptic('medium'); toast('Новый пустой кадр');
   }
+  function duplicateFrame() {
+    pushUndo();
+    const src = state.frames[state.current];
+    state.frames.splice(state.current + 1, 0, {
+      tokens: JSON.parse(JSON.stringify(src.tokens)),
+      drawings: JSON.parse(JSON.stringify(src.drawings)),
+    });
+    loadFrame(state.current + 1);
+    render(); updateFrameUI(); haptic('medium'); toast('Копия кадра');
+  }
   function deleteFrame() {
     if (state.frames.length <= 1) { toast('Остался один кадр'); return; }
     pushUndo();
@@ -850,12 +860,14 @@
   const frPrev = document.getElementById('fr-prev');
   const frNext = document.getElementById('fr-next');
   const frAdd = document.getElementById('fr-add');
+  const frDup = document.getElementById('fr-dup');
   const frDel = document.getElementById('fr-del');
   const frCur = document.getElementById('fr-cur');
   const frTotal = document.getElementById('fr-total');
   frPrev.addEventListener('click', () => gotoFrame(state.current - 1));
   frNext.addEventListener('click', () => gotoFrame(state.current + 1));
   frAdd.addEventListener('click', addFrame);
+  frDup.addEventListener('click', duplicateFrame);
   frDel.addEventListener('click', deleteFrame);
 
   // ---------- Верхние действия ----------
@@ -991,6 +1003,32 @@
     if (currentTpl && currentTpl.id === id) { currentTpl = null; tplUpdate.hidden = true; }
     renderTemplateList(); haptic('rigid'); toast('Схема удалена');
   }
+
+  // Пустая ли доска (один стандартный кадр без рисунков) — тогда склейка её заменяет
+  function isBlankBoard() {
+    return state.frames.length === 1 && (state.frames[0].drawings || []).length === 0 &&
+      JSON.stringify(state.frames[0].tokens) === JSON.stringify(defaultTokens());
+  }
+  // Склейка: добавить кадры схемы к текущей доске
+  async function appendTemplate(id) {
+    const tpl = (await loadTemplates()).find((t) => t.id === id);
+    if (!tpl) return;
+    let frames = tpl.frames;
+    if (!frames || !frames.length) frames = [{ tokens: tpl.tokens || defaultTokens(), drawings: tpl.drawings || [] }];
+    const add = migrateFrames(JSON.parse(JSON.stringify(frames)));
+    pushUndo();
+    if (isBlankBoard()) {
+      state.frames = add;
+      currentTpl = { id: tpl.id, name: tpl.name }; tplUpdate.hidden = false;
+      loadFrame(0);
+    } else {
+      const start = state.frames.length;
+      state.frames.push(...add);
+      loadFrame(start);
+    }
+    render(); updateFrameUI();
+    haptic('medium'); toast('Добавлено кадров: ' + add.length + ' (всего ' + state.frames.length + ')');
+  }
   function fmtDate(ts) {
     try {
       const d = new Date(ts);
@@ -1005,9 +1043,12 @@
     for (const tpl of list) {
       const row = document.createElement('div'); row.className = 'tpl-row';
       const nFrames = tpl.frames ? tpl.frames.length : 1;
-      row.innerHTML = '<div class="tpl-open"><div class="tpl-nm"></div><div class="tpl-meta">' + fmtDate(tpl.createdAt) + ' · ' + nFrames + ' кадр.</div></div><button class="tpl-del" aria-label="Удалить"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg></button>';
+      row.innerHTML = '<div class="tpl-open"><div class="tpl-nm"></div><div class="tpl-meta">' + fmtDate(tpl.createdAt) + ' · ' + nFrames + ' кадр.</div></div>' +
+        '<button class="tpl-add" aria-label="Добавить кадры" title="Добавить кадры этой схемы к текущей"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>' +
+        '<button class="tpl-del" aria-label="Удалить"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg></button>';
       row.querySelector('.tpl-nm').textContent = tpl.name;
       row.querySelector('.tpl-open').addEventListener('click', () => openTemplate(tpl.id));
+      row.querySelector('.tpl-add').addEventListener('click', (ev) => { ev.stopPropagation(); appendTemplate(tpl.id); });
       row.querySelector('.tpl-del').addEventListener('click', (ev) => { ev.stopPropagation(); deleteTemplate(tpl.id); });
       tplList.appendChild(row);
     }
