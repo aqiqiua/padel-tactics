@@ -194,22 +194,25 @@
   }
   // Панель стекла — гладкая тёмно-синяя с бликом
   function glassPanel(rx, ry, rw, rh) {
-    gfx.fillStyle = '#243349';
+    gfx.fillStyle = '#3c567f';
     gfx.fillRect(rx, ry, rw, rh);
-    gfx.fillStyle = 'rgba(255,255,255,0.03)';
-    gfx.fillRect(rx, ry, rw, rh * 0.45);
+  }
+  // Панель решётки — чёрная база + штриховка
+  function meshPanel(rx, ry, rw, rh) {
+    gfx.fillStyle = '#05080e'; gfx.fillRect(rx, ry, rw, rh);
+    hatchRect(rx, ry, rw, rh);
   }
   // Чёрная балка-пост (заметная, с гранью)
   function beamPost(rx, ry, rw, rh) {
     gfx.fillStyle = '#03050b'; gfx.fillRect(rx, ry, rw, rh);
-    gfx.fillStyle = 'rgba(150,164,186,0.32)'; gfx.fillRect(rx, ry, rw, Math.max(1.3, rh * 0.24));
-    gfx.fillStyle = 'rgba(0,0,0,0.55)'; gfx.fillRect(rx, ry + rh - Math.max(1, rh * 0.2), rw, Math.max(1, rh * 0.2));
+    gfx.fillStyle = 'rgba(150,164,186,0.30)'; gfx.fillRect(rx, ry, rw, Math.max(1.2, rh * 0.22));
+    gfx.fillStyle = 'rgba(0,0,0,0.5)'; gfx.fillRect(rx, ry + rh - Math.max(1, rh * 0.18), rw, Math.max(1, rh * 0.18));
   }
   function drawEnclosure(x, y, w, h) {
     const ft = Math.max(7, w * 0.044);   // толщина рамы
-    const bw = Math.max(4, ft * 0.85);   // ширина балки (заметная)
+    const bw = Math.max(4, ft * 0.85);   // ширина балки
     const g = bw / 2;
-    const cm = w * 0.13;                  // угловая решётка на задней стене
+    const m0 = 0.17, m1 = 0.83;          // решётка — средняя часть боковых стен
 
     // 1. чёрная база
     gfx.fillStyle = '#05080e';
@@ -218,30 +221,26 @@
     gfx.fillRect(x - ft, y, ft, h);
     gfx.fillRect(x + w, y, ft, h);
 
-    // 2. задние стены: решётка в углах + стекло по центру (двумя панелями с постом посередине)
-    for (const by of [y - ft, y + h]) {
-      hatchRect(x + g, by, cm, ft);
-      hatchRect(x + w - cm - g, by, cm, ft);
-      const gl = (w / 2) - cm - bw;
-      if (gl > 4) { glassPanel(x + cm + g, by, gl, ft); glassPanel(x + w / 2 + g, by, gl, ft); }
-    }
+    // 2. СТЕКЛО — непрерывной рамкой: верх/низ во всю ширину + возвраты по бокам, огибая углы
+    glassPanel(x - ft, y - ft, w + 2 * ft, ft);          // верх (с углами)
+    glassPanel(x - ft, y + h, w + 2 * ft, ft);           // низ
+    glassPanel(x - ft, y, ft, m0 * h);                   // левый верхний возврат
+    glassPanel(x - ft, y + m1 * h, ft, (1 - m1) * h);    // левый нижний возврат
+    glassPanel(x + w, y, ft, m0 * h);                    // правый верхний возврат
+    glassPanel(x + w, y + m1 * h, ft, (1 - m1) * h);     // правый нижний возврат
 
-    // 3. боковые стены: решётка панелями между балками
-    const fr = [0, 0.14, 0.29, 0.43, 0.5, 0.57, 0.71, 0.86, 1.0];
-    for (let i = 0; i < fr.length - 1; i++) {
-      const ry = y + fr[i] * h + g, rh = (fr[i + 1] - fr[i]) * h - bw;
-      if (rh <= 2) continue;
-      hatchRect(x - ft, ry, ft, rh);
-      hatchRect(x + w, ry, ft, rh);
-    }
+    // 3. РЕШЁТКА — только середина боковых стен
+    meshPanel(x - ft, y + m0 * h, ft, (m1 - m0) * h);
+    meshPanel(x + w, y + m0 * h, ft, (m1 - m0) * h);
 
-    // 4. ВИДИМЫЕ балки-посты
-    for (const p of fr) { const py = y + p * h; beamPost(x - ft, py - g, ft, bw); beamPost(x + w, py - g, ft, bw); }
-    { const px = x + w / 2; beamPost(px - g, y - ft, bw, ft); beamPost(px - g, y + h, bw, ft); }
-    // угловые посты (крупные)
-    const cp = ft;
-    beamPost(x - ft, y - ft, cp, cp); beamPost(x + w + ft - cp, y - ft, cp, cp);
-    beamPost(x - ft, y + h + ft - cp, cp, cp); beamPost(x + w + ft - cp, y + h + ft - cp, cp, cp);
+    // 4. БАЛКИ вдоль решётки (углы не разрываем — там непрерывное стекло)
+    for (const p of [m0, 0.34, 0.5, 0.66, m1]) {
+      const py = y + p * h;
+      beamPost(x - ft, py - g, ft, bw);
+      beamPost(x + w, py - g, ft, bw);
+    }
+    beamPost(x + w / 2 - g, y - ft, bw, ft);   // центральный пост, верх
+    beamPost(x + w / 2 - g, y + h, bw, ft);     // центральный пост, низ
 
     // 5. грань рамы
     gfx.lineWidth = 1.5; gfx.strokeStyle = 'rgba(0,0,0,0.8)';
