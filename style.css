@@ -137,6 +137,24 @@ html, body {
 #alpha-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); cursor: pointer; box-shadow: 0 0 8px rgba(52,211,153,0.5); }
 #alpha-range::-moz-range-thumb { width: 18px; height: 18px; border: none; border-radius: 50%; background: var(--accent); cursor: pointer; }
 
+.widths { display: flex; gap: 5px; flex: none; }
+.width { width: 30px; height: 24px; border: 1px solid var(--glass-border); border-radius: 8px; background: var(--glass); display: grid; place-items: center; cursor: pointer; opacity: 0.6; transition: opacity 0.15s ease, border-color 0.15s ease, transform 0.06s ease; }
+.width:active { transform: scale(0.9); }
+.width.active { opacity: 1; border-color: var(--accent); box-shadow: 0 0 8px rgba(52,211,153,0.25); }
+.wdot { display: block; border-radius: 50%; background: var(--text); }
+
+/* ---------- Поле текстовой заметки ---------- */
+.text-input {
+  position: fixed; z-index: 62; display: none;
+  min-width: 120px; max-width: 220px;
+  padding: 8px 11px; border-radius: 10px;
+  background: rgba(12, 18, 32, 0.96); border: 1px solid var(--accent);
+  color: var(--text); font: 700 15px var(--font-ui); outline: none;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55);
+  -webkit-user-select: text; user-select: text;
+}
+.text-input::placeholder { color: var(--hint); font-weight: 500; }
+
 /* ---------- Контекстные действия над объектом ---------- */
 .obj-actions {
   position: fixed; z-index: 40; display: none; align-items: center; gap: 6px; padding: 5px;
@@ -171,8 +189,10 @@ html, body {
 #tpl-name { flex: 1; min-width: 0; background: var(--glass); border: 1px solid var(--glass-border); border-radius: 12px; padding: 11px 13px; color: var(--text); font: 500 14px var(--font-ui); outline: none; -webkit-user-select: text; user-select: text; }
 #tpl-name:focus { border-color: var(--accent); }
 #tpl-name::placeholder { color: var(--hint); }
-#tpl-save { flex: none; padding: 0 18px; border: none; border-radius: 12px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); font: 700 14px var(--font-ui); cursor: pointer; transition: transform 0.06s ease; }
+#tpl-save { flex: none; padding: 0 16px; border: none; border-radius: 12px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); font: 700 14px var(--font-ui); cursor: pointer; transition: transform 0.06s ease; }
 #tpl-save:active { transform: scale(0.95); }
+#tpl-update { flex: none; padding: 0 14px; border: 1px solid var(--glass-border); border-radius: 12px; background: var(--glass); color: var(--text); font: 700 13px var(--font-ui); cursor: pointer; transition: transform 0.06s ease; }
+#tpl-update:active { transform: scale(0.95); }
 .sheet-list { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; -webkit-overflow-scrolling: touch; }
 .tpl-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--glass); border: 1px solid var(--glass-border); cursor: pointer; transition: background 0.12s ease, transform 0.06s ease; }
 .tpl-row:active { transform: scale(0.99); background: var(--glass-2); }

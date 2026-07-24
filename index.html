@@ -99,6 +99,10 @@
           <svg viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" stroke-dasharray="3.5 3"/></svg>
           <span>Зона</span>
         </button>
+        <button class="tool" data-tool="text" title="Текст — заметка">
+          <svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13"/></svg>
+          <span>Текст</span>
+        </button>
       </div>
 
       <div class="row">
@@ -107,7 +111,6 @@
       </div>
 
       <div class="row">
-        <div class="row-label">СТИЛЬ</div>
         <div class="styles" id="styles">
           <button class="style" data-dash="solid" title="Сплошная">
             <svg viewBox="0 0 40 24"><path d="M4 12h32"/></svg>
@@ -118,6 +121,11 @@
           <button class="style" data-dash="dotted" title="Точки">
             <svg viewBox="0 0 40 24"><path d="M4 12h32" stroke-dasharray="1 6" stroke-linecap="round"/></svg>
           </button>
+        </div>
+        <div class="widths" id="widths">
+          <button class="width" data-width="thin" title="Тонкая"><span class="wdot" style="width:3px;height:3px"></span></button>
+          <button class="width" data-width="med" title="Средняя"><span class="wdot" style="width:6px;height:6px"></span></button>
+          <button class="width" data-width="thick" title="Толстая"><span class="wdot" style="width:9px;height:9px"></span></button>
         </div>
         <div class="zone-alpha" id="zone-alpha" hidden>
           <span class="row-label">ФОН</span>
@@ -139,6 +147,7 @@
     </div>
     <div class="sheet-save">
       <input id="tpl-name" type="text" maxlength="40" placeholder="Название схемы" autocomplete="off" />
+      <button id="tpl-update" hidden>Обновить</button>
       <button id="tpl-save">Сохранить</button>
     </div>
     <div class="sheet-list" id="tpl-list"></div>

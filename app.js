@@ -57,7 +57,8 @@
   }
 
   // ---------- Состояние ----------
-  const COLORS = ['#F4F7FB', '#FBBF24', '#38BDF8', '#FB7185', '#34D399', '#A5B4FC'];
+  const COLORS = ['#F4F7FB', '#FBBF24', '#38BDF8', '#FB7185', '#34D399', '#A5B4FC', '#12151c'];
+  const WIDTHS = { thin: 0.0038, med: 0.006, thick: 0.0092 };
   const HANDLE_HIT = 22;
   const undoStack = [], redoStack = [];
   let clipboard = null;   // буфер для копирования объекта
@@ -66,6 +67,7 @@
     tool: 'move',
     color: '#F4F7FB',
     dash: 'solid',       // solid | dashed | dotted
+    width: 'med',        // thin | med | thick
     zoneAlpha: 0.15,
     frames: [{ tokens: defaultTokens(), drawings: [] }],
     current: 0,
@@ -156,20 +158,26 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const normPt = (px, py) => { const n = toNorm(px, py); return { x: clamp01(n.x), y: clamp01(n.y) }; };
   const tokenRadius = () => court.w * 0.064;
-  const lineW = () => Math.max(1.3, court.w * 0.005);
+  const lineW = (level) => Math.max(1.2, court.w * (WIDTHS[level] || WIDTHS.med));
 
   function clampView() {
     view.scale = clamp(view.scale, 1, 4);
     if (view.scale <= 1.001) { view.scale = 1; view.tx = 0; view.ty = 0; return; }
     const rect = canvas.getBoundingClientRect();
-    const W = rect.width, H = rect.height, s = view.scale;
-    const ccx = view.tx + (court.x + court.w / 2) * s;
-    const ccy = view.ty + (court.y + court.h / 2) * s;
-    const mx = W * 0.12, my = H * 0.12;
-    if (ccx < mx) view.tx += mx - ccx;
-    if (ccx > W - mx) view.tx -= ccx - (W - mx);
-    if (ccy < my) view.ty += my - ccy;
-    if (ccy > H - my) view.ty -= ccy - (H - my);
+    const W = rect.width, H = rect.height, s = view.scale, pad = 24;
+    // границы корта на экране
+    const top = view.ty + court.y * s, bottom = view.ty + (court.y + court.h) * s;
+    const left = view.tx + court.x * s, right = view.tx + (court.x + court.w) * s;
+    // по вертикали: если контент выше вьюпорта — свободный пан без больших зазоров, иначе центрируем
+    if (bottom - top >= H - 2 * pad) {
+      if (top > pad) view.ty -= (top - pad);
+      else if (bottom < H - pad) view.ty += (H - pad - bottom);
+    } else view.ty += (H - (top + bottom)) / 2;
+    // по горизонтали
+    if (right - left >= W - 2 * pad) {
+      if (left > pad) view.tx -= (left - pad);
+      else if (right < W - pad) view.tx += (W - pad - right);
+    } else view.tx += (W - (left + right)) / 2;
   }
 
   // ---------- Стиль штриха ----------
@@ -310,8 +318,8 @@
     const { x, y, w, h } = zoneBox(d);
     gfx.fillStyle = rgba(d.color, d.alpha != null ? d.alpha : 0.15);
     gfx.fillRect(x, y, w, h);
-    gfx.strokeStyle = d.color; gfx.lineWidth = lineW() * 0.7; gfx.lineJoin = 'miter';
-    applyDash(d.dash || 'solid', lineW());
+    gfx.strokeStyle = d.color; gfx.lineWidth = lineW(d.width); gfx.lineJoin = 'miter';
+    applyDash(d.dash || 'solid', lineW(d.width));
     gfx.strokeRect(x, y, w, h);
     clearDash(); gfx.lineJoin = 'round';
   }
@@ -321,7 +329,7 @@
   };
   function drawArrow(d) {
     if (!d.from || !d.to) return;
-    const a = toPx(d.from), b = toPx(d.to), c = toPx(arrowCtrl(d)), w = lineW();
+    const a = toPx(d.from), b = toPx(d.to), c = toPx(arrowCtrl(d)), w = lineW(d.width);
     gfx.strokeStyle = d.color; gfx.fillStyle = d.color; gfx.lineWidth = w; gfx.lineJoin = 'round';
     applyDash(d.dash || 'solid', w);
     gfx.beginPath(); gfx.moveTo(a.x, a.y); gfx.quadraticCurveTo(c.x, c.y, b.x, b.y); gfx.stroke();
@@ -338,14 +346,30 @@
     gfx.closePath(); gfx.fill();
   }
   function drawPen(d) {
-    const w = lineW();
+    const w = lineW(d.width);
     gfx.strokeStyle = d.color; gfx.fillStyle = d.color; gfx.lineWidth = w; gfx.lineJoin = 'round';
     applyDash(d.dash || 'solid', w);
     if (d.points.length < 2) { const p = toPx(d.points[0]); clearDash(); dot(p.x, p.y, w / 2); return; }
     tracePoints(d.points); gfx.stroke(); clearDash();
   }
+  function drawText(d) {
+    if (d._editing) return;
+    const p = toPx(d), fs = Math.max(9, court.w * (d.size || 0.05));
+    gfx.font = `700 ${fs}px Manrope, -apple-system, sans-serif`;
+    gfx.textAlign = 'center'; gfx.textBaseline = 'middle'; gfx.lineJoin = 'round';
+    gfx.lineWidth = Math.max(2, fs * 0.18); gfx.strokeStyle = 'rgba(0,0,0,0.5)';
+    gfx.strokeText(d.text, p.x, p.y);
+    gfx.fillStyle = d.color; gfx.fillText(d.text, p.x, p.y);
+  }
+  function textBox(d) {
+    const p = toPx(d), fs = Math.max(9, court.w * (d.size || 0.05));
+    gfx.font = `700 ${fs}px Manrope, sans-serif`;
+    const wpx = gfx.measureText(d.text || '').width, hpx = fs * 1.25;
+    return { x: p.x - wpx / 2, y: p.y - hpx / 2, w: wpx, h: hpx };
+  }
   function drawDrawing(d) {
     if (d.type === 'zone') drawZone(d);
+    else if (d.type === 'text') drawText(d);
     else if (isArrow(d)) drawArrow(d);
     else drawPen(d);
   }
@@ -353,10 +377,13 @@
   function drawSelectionGlow(d) {
     gfx.save();
     gfx.strokeStyle = 'rgba(52,211,153,0.55)'; gfx.lineCap = 'round'; gfx.lineJoin = 'round';
-    const w = lineW() + 9;
+    const w = lineW(d.width) + 9;
     if (d.type === 'zone') {
       const { x, y, w: bw, h: bh } = zoneBox(d);
       gfx.lineWidth = 6; gfx.strokeRect(x, y, bw, bh);
+    } else if (d.type === 'text') {
+      const b = textBox(d);
+      gfx.lineWidth = 3; gfx.strokeRect(b.x - 6, b.y - 4, b.w + 12, b.h + 8);
     } else if (isArrow(d)) {
       const a = toPx(d.from), b = toPx(d.to), c = toPx(arrowCtrl(d));
       gfx.lineWidth = w; gfx.beginPath(); gfx.moveTo(a.x, a.y); gfx.quadraticCurveTo(c.x, c.y, b.x, b.y); gfx.stroke();
@@ -379,6 +406,7 @@
         { px: toPx(arrowCtrl(d)), kind: 'ctrl' },
       ];
     }
+    if (d.type === 'text') return [];
     const last = d.points.length - 1;
     return [{ px: toPx(d.points[0]), kind: 'pt', i: 0 }, { px: toPx(d.points[last]), kind: 'pt', i: last }];
   }
@@ -415,7 +443,9 @@
   // ---------- Render ----------
   function renderScene() {
     drawCourt();
-    for (const d of state.drawings) { if (d === state.selected) drawSelectionGlow(d); drawDrawing(d); }
+    // зоны — нижний слой, стрелки/свечи/линии/текст — выше
+    for (const d of state.drawings) if (d.type === 'zone') { if (d === state.selected) drawSelectionGlow(d); drawDrawing(d); }
+    for (const d of state.drawings) if (d.type !== 'zone') { if (d === state.selected) drawSelectionGlow(d); drawDrawing(d); }
     if (state.selected) drawHandles(state.selected);
     for (const t of state.tokens) drawToken(t);
   }
@@ -488,7 +518,17 @@
     if (e.ctrlKey) zoomAt(screenPos(e), e.deltaY < 0 ? 1.12 : 1 / 1.12);   // пинч на трекпаде / Ctrl+колесо
     else { view.tx -= e.deltaX; view.ty -= e.deltaY; clampView(); render(); }  // прокрутка = пан
   }, { passive: false });
-  canvas.addEventListener('dblclick', () => { view.scale = 1; view.tx = 0; view.ty = 0; render(); });
+  canvas.addEventListener('dblclick', (e) => {
+    const pos = worldPos(e);
+    const d = hitDrawing(pos.x, pos.y);
+    if (d && d.type === 'text') {
+      const r = canvas.getBoundingClientRect(), scr = screenPos(e);
+      select(d);
+      openTextEditor(r.left + scr.x, r.top + scr.y, { x: d.x, y: d.y }, d);
+      return;
+    }
+    view.scale = 1; view.tx = 0; view.ty = 0; render();
+  });
   zoomResetBtn.addEventListener('click', () => { view.scale = 1; view.tx = 0; view.ty = 0; render(); haptic('light'); });
 
   function hitToken(px, py) {
@@ -500,11 +540,13 @@
     return null;
   }
   function hitDrawing(px, py) {
-    for (let i = state.drawings.length - 1; i >= 0; i--) {
-      const d = state.drawings[i];
-      const thr = (d.type === 'zone' ? 10 : Math.max(16, lineW() + 10)) / view.scale;
-      if (drawingHit(d, px, py, thr)) return d;
-    }
+    const test = (d) => {
+      const thr = (d.type === 'zone' || d.type === 'text' ? 8 : Math.max(16, lineW(d.width) + 10)) / view.scale;
+      return drawingHit(d, px, py, thr);
+    };
+    // сначала верхний слой (не зоны), затем зоны (нижний слой)
+    for (let i = state.drawings.length - 1; i >= 0; i--) { const d = state.drawings[i]; if (d.type !== 'zone' && test(d)) return d; }
+    for (let i = state.drawings.length - 1; i >= 0; i--) { const d = state.drawings[i]; if (d.type === 'zone' && test(d)) return d; }
     return null;
   }
   function hitHandle(px, py) {
@@ -528,22 +570,27 @@
       select(null);
       return;
     }
+    if (state.tool === 'text') {
+      const r = canvas.getBoundingClientRect(), scr = screenPos(e);
+      openTextEditor(r.left + scr.x, r.top + scr.y, normPt(pos.x, pos.y), null);
+      return;
+    }
     select(null);
     const n = normPt(pos.x, pos.y);
     if (state.tool === 'pen') {
       pushUndo();
-      const d = { type: 'pen', color: state.color, dash: state.dash, points: [n] };
+      const d = { type: 'pen', color: state.color, dash: state.dash, width: state.width, points: [n] };
       state.drawings.push(d);
       active = { pointerId: e.pointerId, mode: 'path', drawing: d, undoPushed: true };
     } else if (state.tool === 'arrow' || state.tool === 'lob') {
       pushUndo();
-      const d = { type: state.tool, color: state.color, dash: state.tool === 'lob' ? 'dotted' : state.dash, from: n, to: { x: n.x, y: n.y }, off: { x: 0, y: 0 } };
+      const d = { type: state.tool, color: state.color, dash: state.tool === 'lob' ? 'dotted' : state.dash, width: state.width, from: n, to: { x: n.x, y: n.y }, off: { x: 0, y: 0 } };
       state.drawings.push(d);
       active = { pointerId: e.pointerId, mode: state.tool, drawing: d, undoPushed: true };
       render();
     } else if (state.tool === 'zone') {
       pushUndo();
-      const d = { type: 'zone', color: state.color, dash: state.dash, alpha: state.zoneAlpha, from: n, to: { x: n.x, y: n.y } };
+      const d = { type: 'zone', color: state.color, dash: state.dash, width: state.width, alpha: state.zoneAlpha, from: n, to: { x: n.x, y: n.y } };
       state.drawings.push(d);
       active = { pointerId: e.pointerId, mode: 'zone', drawing: d, undoPushed: true };
       render();
@@ -615,11 +662,16 @@
   function finishDraw(d) { setTool('move'); select(d); haptic('light'); }
   function pathLenPx(d) { let L = 0; for (let i = 1; i < d.points.length; i++) { const a = toPx(d.points[i - 1]), b = toPx(d.points[i]); L += Math.hypot(b.x - a.x, b.y - a.y); } return L; }
   function translateDrawing(d, dx, dy) {
-    if (d.type === 'zone' || isArrow(d)) { d.from.x += dx; d.from.y += dy; d.to.x += dx; d.to.y += dy; }
+    if (d.type === 'text') { d.x += dx; d.y += dy; }
+    else if (d.type === 'zone' || isArrow(d)) { d.from.x += dx; d.from.y += dy; d.to.x += dx; d.to.y += dy; }
     else for (const p of d.points) { p.x += dx; p.y += dy; }
   }
   function removeDrawing(d) { const i = state.drawings.indexOf(d); if (i >= 0) state.drawings.splice(i, 1); if (state.selected === d) select(null); }
   function drawingHit(d, px, py, thr) {
+    if (d.type === 'text') {
+      const b = textBox(d);
+      return px >= b.x - thr && px <= b.x + b.w + thr && py >= b.y - thr && py <= b.y + b.h + thr;
+    }
     if (d.type === 'zone') {
       const a = toPx(d.from), b = toPx(d.to);
       return px >= Math.min(a.x, b.x) - thr && px <= Math.max(a.x, b.x) + thr && py >= Math.min(a.y, b.y) - thr && py <= Math.max(a.y, b.y) + thr;
@@ -661,6 +713,7 @@
     render();
   }
   function bboxPx(d) {
+    if (d.type === 'text') { const b = textBox(d); return { minX: b.x, minY: b.y, maxX: b.x + b.w, maxY: b.y + b.h }; }
     const pts = d.type === 'zone' ? [d.from, d.to] : (isArrow(d) ? [d.from, d.to, arrowCtrl(d)] : d.points);
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const n of pts) { const p = toPx(n); minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }
@@ -675,6 +728,50 @@
     objActions.style.top = (r.top + topY - 14) + 'px';
     objActions.classList.add('show');
   }
+
+  // ---------- Текстовые заметки ----------
+  const textInput = document.createElement('input');
+  textInput.className = 'text-input';
+  textInput.type = 'text';
+  textInput.maxLength = 60;
+  textInput.setAttribute('placeholder', 'Заметка…');
+  textInput.setAttribute('autocomplete', 'off');
+  document.body.appendChild(textInput);
+  let editingText = null;
+
+  function openTextEditor(sx, sy, n, existing) {
+    editingText = { n, existing };
+    textInput.value = existing ? existing.text : '';
+    textInput.style.left = Math.max(8, Math.min(window.innerWidth - 190, sx - 16)) + 'px';
+    textInput.style.top = Math.max(8, sy - 16) + 'px';
+    textInput.style.display = 'block';
+    if (existing) { existing._editing = true; render(); }
+    setTimeout(() => { textInput.focus(); textInput.select(); }, 10);
+  }
+  function commitText() {
+    if (!editingText) return;
+    const ed = editingText; editingText = null;
+    const val = textInput.value.trim();
+    textInput.style.display = 'none';
+    if (ed.existing) {
+      ed.existing._editing = false;
+      pushUndo();
+      if (val) { ed.existing.text = val; select(ed.existing); }
+      else { removeDrawing(ed.existing); }
+    } else if (val) {
+      pushUndo();
+      const d = { type: 'text', color: state.color, text: val, x: ed.n.x, y: ed.n.y, size: 0.05 };
+      state.drawings.push(d);
+      setTool('move'); select(d);
+    }
+    render();
+  }
+  textInput.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); commitText(); }
+    else if (e.key === 'Escape') { const ed = editingText; editingText = null; textInput.style.display = 'none'; if (ed && ed.existing) ed.existing._editing = false; render(); }
+  });
+  textInput.addEventListener('blur', () => { if (editingText) commitText(); });
 
   // ---------- Инструменты ----------
   const toolsEl = document.getElementById('tools');
@@ -711,6 +808,15 @@
     haptic('select');
   });
 
+  const widthsEl = document.getElementById('widths');
+  widthsEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.width'); if (!btn) return;
+    state.width = btn.dataset.width;
+    for (const b of widthsEl.children) b.classList.toggle('active', b.dataset.width === state.width);
+    if (state.selected && state.selected.type !== 'text') { pushUndo(); state.selected.width = state.width; render(); }
+    haptic('select');
+  });
+
   // Заливка зоны (непрозрачность)
   const zoneAlphaWrap = document.getElementById('zone-alpha');
   const alphaRange = document.getElementById('alpha-range');
@@ -725,8 +831,11 @@
     const sel = state.selected;
     const dash = sel ? (sel.dash || 'solid') : state.dash;
     for (const b of stylesEl.children) b.classList.toggle('active', b.dataset.dash === dash);
+    const width = sel ? (sel.width || 'med') : state.width;
+    for (const b of widthsEl.children) b.classList.toggle('active', b.dataset.width === width);
     const isZone = (sel && sel.type === 'zone') || (!sel && state.tool === 'zone');
     zoneAlphaWrap.hidden = !isZone;
+    widthsEl.hidden = isZone;
     if (isZone) {
       const a = sel && sel.type === 'zone' ? (sel.alpha != null ? sel.alpha : state.zoneAlpha) : state.zoneAlpha;
       alphaRange.value = Math.round(a * 100);
@@ -767,6 +876,8 @@
   const sheetOverlay = document.getElementById('sheet-overlay');
   const tplList = document.getElementById('tpl-list');
   const tplName = document.getElementById('tpl-name');
+  const tplUpdate = document.getElementById('tpl-update');
+  let currentTpl = null;   // текущая загруженная схема (для «Обновить»)
 
   function cloud() {
     try {
@@ -814,7 +925,12 @@
     if (local.length) await persistTemplates(local);
   }
 
-  function openSheet() { sheetOverlay.classList.add('open'); sheet.classList.add('open'); renderTemplateList(); }
+  function openSheet() {
+    sheetOverlay.classList.add('open'); sheet.classList.add('open');
+    tplUpdate.hidden = !currentTpl;
+    if (currentTpl) tplName.value = currentTpl.name;
+    renderTemplateList();
+  }
   function closeSheet() { sheetOverlay.classList.remove('open'); sheet.classList.remove('open'); if (tplName) tplName.blur(); }
   document.getElementById('btn-templates').addEventListener('click', () => { haptic('light'); openSheet(); });
   document.getElementById('sheet-close').addEventListener('click', closeSheet);
@@ -824,9 +940,25 @@
     const list = await loadTemplates();
     let name = (tplName.value || '').trim();
     if (!name) name = 'Схема ' + (list.length + 1);
-    list.unshift({ id: String(Date.now()) + '-' + Math.floor(Math.random() * 1000), name, createdAt: Date.now(), frames: JSON.parse(JSON.stringify(state.frames)) });
+    const id = String(Date.now()) + '-' + Math.floor(Math.random() * 1000);
+    list.unshift({ id, name, createdAt: Date.now(), frames: JSON.parse(JSON.stringify(state.frames)) });
     if (!(await persistTemplates(list))) { toast('Не удалось сохранить'); return; }
-    tplName.value = ''; renderTemplateList(); haptic('medium'); toast('Схема сохранена');
+    currentTpl = { id, name }; tplUpdate.hidden = false;
+    renderTemplateList(); haptic('medium'); toast('Схема сохранена');
+  });
+
+  tplUpdate.addEventListener('click', async () => {
+    if (!currentTpl) return;
+    const list = await loadTemplates();
+    const t = list.find((x) => x.id === currentTpl.id);
+    if (!t) { toast('Схема не найдена'); currentTpl = null; tplUpdate.hidden = true; renderTemplateList(); return; }
+    const nm = (tplName.value || '').trim();
+    if (nm) t.name = nm;
+    t.frames = JSON.parse(JSON.stringify(state.frames));
+    t.createdAt = Date.now();
+    currentTpl.name = t.name;
+    if (!(await persistTemplates(list))) { toast('Не удалось обновить'); return; }
+    renderTemplateList(); haptic('medium'); toast('Схема обновлена');
   });
 
   function migrateFrames(frames) {
@@ -850,11 +982,14 @@
     if (!frames || !frames.length) frames = [{ tokens: tpl.tokens || defaultTokens(), drawings: tpl.drawings || [] }];
     pushUndo();
     state.frames = migrateFrames(JSON.parse(JSON.stringify(frames)));
-    loadFrame(0); render(); updateFrameUI(); closeSheet(); haptic('medium'); toast('Схема загружена');
+    currentTpl = { id: tpl.id, name: tpl.name };
+    loadFrame(0); render(); updateFrameUI(); closeSheet(); haptic('medium'); toast('Схема загружена — меняй и жми «Обновить»');
   }
   async function deleteTemplate(id) {
     const list = (await loadTemplates()).filter((t) => t.id !== id);
-    await persistTemplates(list); renderTemplateList(); haptic('rigid'); toast('Схема удалена');
+    await persistTemplates(list);
+    if (currentTpl && currentTpl.id === id) { currentTpl = null; tplUpdate.hidden = true; }
+    renderTemplateList(); haptic('rigid'); toast('Схема удалена');
   }
   function fmtDate(ts) {
     try {
@@ -940,6 +1075,7 @@
       case 'KeyA': setTool('arrow'); return;
       case 'KeyS': setTool('lob'); return;
       case 'KeyZ': setTool('zone'); return;
+      case 'KeyT': setTool('text'); return;
       case 'ArrowLeft': if (state.selected) nudge(-0.006, 0); else { e.preventDefault(); gotoFrame(state.current - 1); } return;
       case 'ArrowRight': if (state.selected) nudge(0.006, 0); else { e.preventDefault(); gotoFrame(state.current + 1); } return;
       case 'ArrowUp': if (state.selected) nudge(0, -0.006); return;
@@ -955,6 +1091,7 @@
   setTool('move');
   updateFrameUI();
   for (const b of stylesEl.children) b.classList.toggle('active', b.dataset.dash === state.dash);
+  for (const b of widthsEl.children) b.classList.toggle('active', b.dataset.width === state.width);
   migrateLocalToCloud();
   requestAnimationFrame(resize);
 })();
