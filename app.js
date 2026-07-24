@@ -163,12 +163,13 @@
     if (view.scale <= 1.001) { view.scale = 1; view.tx = 0; view.ty = 0; return; }
     const rect = canvas.getBoundingClientRect();
     const W = rect.width, H = rect.height, s = view.scale;
-    const left = view.tx + court.x * s, right = view.tx + (court.x + court.w) * s;
-    const top = view.ty + court.y * s, bottom = view.ty + (court.y + court.h) * s;
-    if (right < W * 0.35) view.tx += W * 0.35 - right;
-    if (left > W * 0.65) view.tx -= left - W * 0.65;
-    if (bottom < H * 0.35) view.ty += H * 0.35 - bottom;
-    if (top > H * 0.65) view.ty -= top - H * 0.65;
+    const ccx = view.tx + (court.x + court.w / 2) * s;
+    const ccy = view.ty + (court.y + court.h / 2) * s;
+    const mx = W * 0.12, my = H * 0.12;
+    if (ccx < mx) view.tx += mx - ccx;
+    if (ccx > W - mx) view.tx -= ccx - (W - mx);
+    if (ccy < my) view.ty += my - ccy;
+    if (ccy > H - my) view.ty -= ccy - (H - my);
   }
 
   // ---------- Стиль штриха ----------
@@ -192,35 +193,32 @@
     gfx.restore();
   }
   function drawEnclosure(x, y, w, h) {
-    const ft = Math.max(9, w * 0.055);
-    // сплошная чёрная рама (стекло/каркас)
-    gfx.fillStyle = '#0b1220';
+    const ft = Math.max(9, w * 0.055);   // толщина рамы
+    const pw = ft * 1.3;                  // ширина чёрной балки-поста
+    // 1. чёрная рама (балки/каркас)
+    gfx.fillStyle = '#06090f';
     gfx.fillRect(x - ft, y - ft, w + 2 * ft, ft);
     gfx.fillRect(x - ft, y + h, w + 2 * ft, ft);
     gfx.fillRect(x - ft, y, ft, h);
     gfx.fillRect(x + w, y, ft, h);
-    // решётка: углы (L-образно) + середина каждой стороны
-    const ext = w * 0.11, midX = w * 0.15, midY = h * 0.10;
-    // углы
-    const corners = [[x - ft, y - ft], [x + w - ext, y - ft], [x - ft, y + h], [x + w - ext, y + h]];
-    // верхняя/нижняя горизонтальные полосы у углов
-    hatchRect(x - ft, y - ft, ft + ext, ft);
-    hatchRect(x + w - ext, y - ft, ft + ext, ft);
-    hatchRect(x - ft, y + h, ft + ext, ft);
-    hatchRect(x + w - ext, y + h, ft + ext, ft);
-    // боковые вертикальные полосы у углов
-    hatchRect(x - ft, y - ft, ft, ft + ext);
-    hatchRect(x - ft, y + h - ext, ft, ft + ext);
-    hatchRect(x + w, y - ft, ft, ft + ext);
-    hatchRect(x + w, y + h - ext, ft, ft + ext);
-    // середины сторон
-    hatchRect(x + w / 2 - midX / 2, y - ft, midX, ft);
-    hatchRect(x + w / 2 - midX / 2, y + h, midX, ft);
-    hatchRect(x - ft, y + h / 2 - midY / 2, ft, midY);
-    hatchRect(x + w, y + h / 2 - midY / 2, ft, midY);
-    // тонкая внешняя окантовка рамы
-    gfx.strokeStyle = 'rgba(0,0,0,0.9)'; gfx.lineWidth = 2;
+    // 2. решётка — панелями между балками (углы + середина остаются чёрными балками)
+    const topSegs = [
+      [x - ft + pw, (x + w / 2 - pw / 2) - (x - ft + pw)],
+      [x + w / 2 + pw / 2, (x + w + ft - pw) - (x + w / 2 + pw / 2)],
+    ];
+    for (const [rx, rw] of topSegs) if (rw > 4) { hatchRect(rx, y - ft, rw, ft); hatchRect(rx, y + h, rw, ft); }
+    const sideSegs = [
+      [y + pw, (y + h / 2 - pw / 2) - (y + pw)],
+      [y + h / 2 + pw / 2, (y + h - pw) - (y + h / 2 + pw / 2)],
+    ];
+    for (const [ry, rh] of sideSegs) if (rh > 4) { hatchRect(x - ft, ry, ft, rh); hatchRect(x + w, ry, ft, rh); }
+    // 3. грани балок (объём)
+    gfx.lineWidth = 1.5; gfx.strokeStyle = 'rgba(150,162,178,0.20)';
+    gfx.strokeRect(x - ft + 0.75, y - ft + 0.75, w + 2 * ft - 1.5, h + 2 * ft - 1.5);
+    gfx.lineWidth = 2; gfx.strokeStyle = 'rgba(0,0,0,0.95)';
     gfx.strokeRect(x - ft, y - ft, w + 2 * ft, h + 2 * ft);
+    gfx.lineWidth = 1.5; gfx.strokeStyle = 'rgba(0,0,0,0.55)';
+    gfx.strokeRect(x - 0.75, y - 0.75, w + 1.5, h + 1.5);
   }
 
   // ---------- Корт ----------
@@ -230,15 +228,13 @@
 
     // свечение
     gfx.save();
-    gfx.shadowColor = 'rgba(56,110,170,0.55)'; gfx.shadowBlur = Math.max(14, w * 0.06);
-    gfx.fillStyle = '#3e5a80'; gfx.fillRect(x, y, w, h);
+    gfx.shadowColor = 'rgba(20,184,166,0.5)'; gfx.shadowBlur = Math.max(14, w * 0.06);
+    gfx.fillStyle = '#123f45'; gfx.fillRect(x, y, w, h);
     gfx.restore();
 
     // покрытие + затемнение у задних стен
-    const grd = gfx.createLinearGradient(0, y, 0, y + h);
-    grd.addColorStop(0, '#37507140'); grd.addColorStop(0.5, '#00000000'); grd.addColorStop(1, '#37507140');
-    gfx.fillStyle = '#3e5a80'; gfx.fillRect(x, y, w, h);
-    gfx.fillStyle = 'rgba(0,0,0,0.16)';
+    gfx.fillStyle = '#123f45'; gfx.fillRect(x, y, w, h);
+    gfx.fillStyle = 'rgba(0,0,0,0.18)';
     gfx.fillRect(x, y, w, h * 0.14); gfx.fillRect(x, y + h * 0.86, w, h * 0.14);
 
     drawEnclosure(x, y, w, h);
@@ -251,8 +247,8 @@
 
     const svcTop = y + h * 0.1525, svcBot = y + h * 0.8475;
     hLine(x, x + w, svcTop); hLine(x, x + w, svcBot);
-    const cx = x + w / 2, netY = y + h / 2;
-    vLine(cx, svcTop, svcBot);
+    const cx = x + w / 2, netY = y + h / 2, oh = h * 0.014;
+    vLine(cx, y - oh, y + h + oh);
 
     // сетка
     gfx.save();
@@ -461,7 +457,11 @@
   }
   canvas.addEventListener('pointerup', endPointer);
   canvas.addEventListener('pointercancel', endPointer);
-  canvas.addEventListener('wheel', (e) => { e.preventDefault(); zoomAt(screenPos(e), e.deltaY < 0 ? 1.12 : 1 / 1.12); }, { passive: false });
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (e.ctrlKey) zoomAt(screenPos(e), e.deltaY < 0 ? 1.12 : 1 / 1.12);   // пинч на трекпаде / Ctrl+колесо
+    else { view.tx -= e.deltaX; view.ty -= e.deltaY; clampView(); render(); }  // прокрутка = пан
+  }, { passive: false });
   canvas.addEventListener('dblclick', () => { view.scale = 1; view.tx = 0; view.ty = 0; render(); });
   zoomResetBtn.addEventListener('click', () => { view.scale = 1; view.tx = 0; view.ty = 0; render(); haptic('light'); });
 
@@ -497,8 +497,9 @@
       const t = hitToken(pos.x, pos.y);
       if (t) { select(null); active = { pointerId: e.pointerId, mode: 'drag', token: t, undoPushed: false }; haptic('light'); return; }
       const d = hitDrawing(pos.x, pos.y);
-      if (d) { select(d); active = { pointerId: e.pointerId, mode: 'dragObj', drawing: d, last: pos, undoPushed: false }; haptic('light'); }
-      else select(null);
+      if (d) { select(d); active = { pointerId: e.pointerId, mode: 'dragObj', drawing: d, last: pos, undoPushed: false }; haptic('light'); return; }
+      if (view.scale > 1) { select(null); active = { pointerId: e.pointerId, mode: 'pan', lastScreen: screenPos(e) }; return; }
+      select(null);
       return;
     }
     select(null);
@@ -541,6 +542,11 @@
         else d.off = { x: n.x - (d.from.x + d.to.x) / 2, y: n.y - (d.from.y + d.to.y) / 2 };
       } else d.points[active.h.i] = n;
       render();
+    }
+    else if (active.mode === 'pan') {
+      const sc = screenPos(e);
+      view.tx += sc.x - active.lastScreen.x; view.ty += sc.y - active.lastScreen.y;
+      active.lastScreen = sc; clampView(); render();
     }
     else if (active.mode === 'path') { active.drawing.points.push(normPt(pos.x, pos.y)); render(); }
     else if (active.mode === 'arrow' || active.mode === 'lob' || active.mode === 'zone') { active.drawing.to = normPt(pos.x, pos.y); render(); }
