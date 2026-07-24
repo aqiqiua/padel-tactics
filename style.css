@@ -211,6 +211,19 @@ html, body {
 .tpl-section { font: 700 9px var(--font-mono); letter-spacing: 0.16em; color: var(--hint); padding: 10px 2px 2px; }
 .tpl-section:first-child { padding-top: 2px; }
 
+.tpl-merge { flex: none; padding: 10px; border: 1px solid var(--glass-border); border-radius: 12px; background: var(--glass); color: var(--text); font: 600 13px var(--font-ui); cursor: pointer; transition: transform 0.06s ease; }
+.tpl-merge:active { transform: scale(0.98); }
+.merge-bar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-radius: 12px; background: rgba(52,211,153,0.1); border: 1px solid var(--accent); }
+.merge-bar > span { font: 600 12px var(--font-ui); color: var(--text); }
+.merge-actions { display: flex; gap: 8px; }
+.merge-cancel { padding: 7px 12px; border: 1px solid var(--glass-border); border-radius: 10px; background: transparent; color: var(--text); font: 600 12px var(--font-ui); cursor: pointer; }
+.merge-build { padding: 7px 14px; border: none; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); font: 700 12px var(--font-ui); cursor: pointer; }
+.merge-build:disabled { opacity: 0.4; cursor: default; }
+.tpl-row.merge { cursor: pointer; }
+.tpl-row.merge.sel { border-color: var(--accent); background: rgba(52,211,153,0.1); }
+.merge-badge { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font: 700 12px var(--font-mono); border: 1.5px solid var(--glass-border); color: var(--hint); }
+.tpl-row.merge.sel .merge-badge { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+
 /* ---------- Тост ---------- */
 .toast {
   position: fixed; left: 50%; bottom: calc(120px + env(safe-area-inset-bottom));

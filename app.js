@@ -975,8 +975,11 @@
 
   function openSheet() {
     sheetOverlay.classList.add('open'); sheet.classList.add('open');
+    mergeMode = false; mergeSel = [];
+    mergeBar.hidden = true; mergeBtn.hidden = false; sheetSave.hidden = false;
     tplUpdate.hidden = !currentTpl;
     if (currentTpl) tplName.value = currentTpl.name;
+    updatePublishUI();
     renderTemplateList();
   }
   function closeSheet() { sheetOverlay.classList.remove('open'); sheet.classList.remove('open'); if (tplName) tplName.blur(); }
@@ -1095,32 +1098,68 @@
   }
   function sectionHeader(text) { const d = document.createElement('div'); d.className = 'tpl-section'; d.textContent = text; return d; }
 
+  // ---------- Режим объединения (склейки) ----------
+  const mergeBtn = document.getElementById('tpl-merge');
+  const mergeBar = document.getElementById('merge-bar');
+  const mergeCount = document.getElementById('merge-count');
+  const mergeBuild = document.getElementById('merge-build');
+  const mergeCancel = document.getElementById('merge-cancel');
+  const sheetSave = document.querySelector('.sheet-save');
+  let mergeMode = false, mergeSel = [];
+  const inMerge = (id) => mergeSel.findIndex((t) => t.id === id);
+  function updateMergeBar() {
+    mergeCount.textContent = mergeSel.length ? ('Выбрано: ' + mergeSel.length) : 'Тапай схемы по порядку';
+    mergeBuild.disabled = mergeSel.length < 1;
+    mergeBuild.textContent = 'Собрать' + (mergeSel.length ? ' (' + mergeSel.length + ')' : '');
+  }
+  function enterMerge() { mergeMode = true; mergeSel = []; sheetSave.hidden = true; tplPublish.hidden = true; mergeBtn.hidden = true; mergeBar.hidden = false; updateMergeBar(); renderTemplateList(); }
+  function exitMerge() { mergeMode = false; mergeSel = []; sheetSave.hidden = false; mergeBtn.hidden = false; mergeBar.hidden = true; updatePublishUI(); renderTemplateList(); }
+  function toggleMergeSel(tpl) { const i = inMerge(tpl.id); if (i >= 0) mergeSel.splice(i, 1); else mergeSel.push(tpl); updateMergeBar(); renderTemplateList(); }
+  mergeBtn.addEventListener('click', enterMerge);
+  mergeCancel.addEventListener('click', exitMerge);
+  mergeBuild.addEventListener('click', () => {
+    if (!mergeSel.length) return;
+    const frames = [];
+    for (const tpl of mergeSel) frames.push(...framesOf(tpl));
+    pushUndo();
+    state.frames = frames; currentTpl = null;
+    loadFrame(0); render(); updateFrameUI();
+    exitMerge();
+    haptic('medium'); toast('Собрано ' + frames.length + ' кадр(ов) — назови и сохрани/опубликуй');
+    try { tplName.focus(); } catch (_) {}
+  });
+  function makeMergeRow(tpl) {
+    const row = document.createElement('div'); row.className = 'tpl-row merge';
+    const idx = inMerge(tpl.id), sel = idx >= 0;
+    if (sel) row.classList.add('sel');
+    const nFrames = tpl.frames ? tpl.frames.length : 1;
+    row.innerHTML = '<div class="merge-badge">' + (sel ? (idx + 1) : '') + '</div>' +
+      '<div class="tpl-open"><div class="tpl-nm"></div><div class="tpl-meta">' + nFrames + ' кадр.</div></div>';
+    row.querySelector('.tpl-nm').textContent = tpl.name;
+    row.addEventListener('click', () => toggleMergeSel(tpl));
+    return row;
+  }
+
   async function renderTemplateList() {
     tplList.innerHTML = '<div class="tpl-empty">Загрузка…</div>';
     const [shared, mine] = await Promise.all([loadPresets(), loadTemplates(), loadOwnerId()]);
     tplList.innerHTML = '';
-    if (shared.length) {
-      tplList.appendChild(sectionHeader('ОБЩИЕ СХЕМЫ'));
-      for (const tpl of shared) tplList.appendChild(makeRow(tpl, {
-        canDelete: canPublish(),
-        onOpen: () => openPreset(tpl),
-        onAppend: () => appendPreset(tpl),
-        onDelete: () => deleteSharedPreset(tpl.id),
-      }));
-    }
-    tplList.appendChild(sectionHeader('МОИ СХЕМЫ'));
-    if (!mine.length) {
-      const e = document.createElement('div'); e.className = 'tpl-empty';
-      e.textContent = 'Пока нет своих схем. Расставь кадры и нажми «Сохранить».';
-      tplList.appendChild(e);
-    } else {
-      for (const tpl of mine) tplList.appendChild(makeRow(tpl, {
-        canDelete: true,
-        onOpen: () => openTemplate(tpl.id),
-        onAppend: () => appendTemplate(tpl.id),
-        onDelete: () => deleteTemplate(tpl.id),
-      }));
-    }
+    const section = (title, list, kind) => {
+      if (kind === 'shared' && !list.length) return;
+      tplList.appendChild(sectionHeader(title));
+      if (!list.length) { const e = document.createElement('div'); e.className = 'tpl-empty'; e.textContent = 'Пока нет своих схем. Расставь кадры и нажми «Сохранить».'; tplList.appendChild(e); return; }
+      for (const tpl of list) {
+        if (mergeMode) { tplList.appendChild(makeMergeRow(tpl)); continue; }
+        tplList.appendChild(makeRow(tpl, {
+          canDelete: kind === 'shared' ? canPublish() : true,
+          onOpen: kind === 'shared' ? () => openPreset(tpl) : () => openTemplate(tpl.id),
+          onAppend: kind === 'shared' ? () => appendPreset(tpl) : () => appendTemplate(tpl.id),
+          onDelete: kind === 'shared' ? () => deleteSharedPreset(tpl.id) : () => deleteTemplate(tpl.id),
+        }));
+      }
+    };
+    section('ОБЩИЕ СХЕМЫ', shared, 'shared');
+    section('МОИ СХЕМЫ', mine, 'mine');
   }
 
   // ---------- Экспорт ----------
