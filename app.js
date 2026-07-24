@@ -202,11 +202,11 @@
     gfx.fillStyle = '#05080e'; gfx.fillRect(rx, ry, rw, rh);
     hatchRect(rx, ry, rw, rh);
   }
-  // Чёрная балка-пост (заметная, с гранью)
+  // Балка-пост — белая (для контраста), с лёгкой гранью
   function beamPost(rx, ry, rw, rh) {
-    gfx.fillStyle = '#03050b'; gfx.fillRect(rx, ry, rw, rh);
-    gfx.fillStyle = 'rgba(150,164,186,0.30)'; gfx.fillRect(rx, ry, rw, Math.max(1.2, rh * 0.22));
-    gfx.fillStyle = 'rgba(0,0,0,0.5)'; gfx.fillRect(rx, ry + rh - Math.max(1, rh * 0.18), rw, Math.max(1, rh * 0.18));
+    gfx.fillStyle = '#eef2f9'; gfx.fillRect(rx, ry, rw, rh);
+    gfx.fillStyle = 'rgba(255,255,255,0.6)'; gfx.fillRect(rx, ry, rw, Math.max(1, rh * 0.2));
+    gfx.fillStyle = 'rgba(70,84,108,0.35)'; gfx.fillRect(rx, ry + rh - Math.max(1, rh * 0.22), rw, Math.max(1, rh * 0.22));
   }
   function drawEnclosure(x, y, w, h) {
     const ft = Math.max(7, w * 0.044);   // толщина рамы
