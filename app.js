@@ -138,7 +138,7 @@
     canvas.height = Math.round(rect.height * dpr);
     canvas.style.width = rect.width + 'px';
     canvas.style.height = rect.height + 'px';
-    court = fitCourt(rect.width, rect.height, 34);
+    court = fitCourt(rect.width, rect.height, 14);
     render();
   }
   function fitCourt(W, H, pad) {
@@ -156,7 +156,7 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const normPt = (px, py) => { const n = toNorm(px, py); return { x: clamp01(n.x), y: clamp01(n.y) }; };
   const tokenRadius = () => court.w * 0.064;
-  const lineW = () => Math.max(2.6, court.w * 0.013);
+  const lineW = () => Math.max(1.3, court.w * 0.005);
 
   function clampView() {
     view.scale = clamp(view.scale, 1, 4);
@@ -199,58 +199,52 @@
     gfx.fillStyle = 'rgba(255,255,255,0.03)';
     gfx.fillRect(rx, ry, rw, rh * 0.45);
   }
-  // Чёрная балка-пост
+  // Чёрная балка-пост (заметная, с гранью)
   function beamPost(rx, ry, rw, rh) {
-    gfx.fillStyle = '#0b111c'; gfx.fillRect(rx, ry, rw, rh);
-    gfx.fillStyle = 'rgba(120,134,152,0.14)'; gfx.fillRect(rx, ry, rw, Math.max(1, rh * 0.18));
+    gfx.fillStyle = '#03050b'; gfx.fillRect(rx, ry, rw, rh);
+    gfx.fillStyle = 'rgba(150,164,186,0.32)'; gfx.fillRect(rx, ry, rw, Math.max(1.3, rh * 0.24));
+    gfx.fillStyle = 'rgba(0,0,0,0.55)'; gfx.fillRect(rx, ry + rh - Math.max(1, rh * 0.2), rw, Math.max(1, rh * 0.2));
   }
   function drawEnclosure(x, y, w, h) {
-    const ft = Math.max(6, w * 0.036);        // толщина рамы (тоньше)
-    const pw = Math.max(3, ft * 0.5);         // толщина балки-поста
+    const ft = Math.max(7, w * 0.044);   // толщина рамы
+    const bw = Math.max(4, ft * 0.85);   // ширина балки (заметная)
+    const g = bw / 2;
+    const cm = w * 0.13;                  // угловая решётка на задней стене
 
-    // 1. чёрная база рамы
-    gfx.fillStyle = '#06090f';
+    // 1. чёрная база
+    gfx.fillStyle = '#05080e';
     gfx.fillRect(x - ft, y - ft, w + 2 * ft, ft);
     gfx.fillRect(x - ft, y + h, w + 2 * ft, ft);
     gfx.fillRect(x - ft, y, ft, h);
     gfx.fillRect(x + w, y, ft, h);
 
-    // 2. задние стены (верх/низ) — СТЕКЛО во всю ширину
-    glassPanel(x, y - ft, w, ft);
-    glassPanel(x, y + h, w, ft);
+    // 2. задние стены: решётка в углах + стекло по центру (двумя панелями с постом посередине)
+    for (const by of [y - ft, y + h]) {
+      hatchRect(x + g, by, cm, ft);
+      hatchRect(x + w - cm - g, by, cm, ft);
+      const gl = (w / 2) - cm - bw;
+      if (gl > 4) { glassPanel(x + cm + g, by, gl, ft); glassPanel(x + w / 2 + g, by, gl, ft); }
+    }
 
-    // 3. боковые стены (лево/право) — панели между балками: стекло у углов, решётка в середине
-    const fr = [0, 0.13, 0.29, 0.42, 0.5, 0.58, 0.71, 0.87, 1.0];
+    // 3. боковые стены: решётка панелями между балками
+    const fr = [0, 0.14, 0.29, 0.43, 0.5, 0.57, 0.71, 0.86, 1.0];
     for (let i = 0; i < fr.length - 1; i++) {
-      const ry = y + fr[i] * h + pw / 2;
-      const rh = (fr[i + 1] - fr[i]) * h - pw;
+      const ry = y + fr[i] * h + g, rh = (fr[i + 1] - fr[i]) * h - bw;
       if (rh <= 2) continue;
-      const paint = (i === 0 || i === fr.length - 2) ? glassPanel : hatchRect;
-      paint(x - ft, ry, ft, rh);
-      paint(x + w, ry, ft, rh);
+      hatchRect(x - ft, ry, ft, rh);
+      hatchRect(x + w, ry, ft, rh);
     }
 
-    // 4. балки-посты по боковым стенам (горизонтальные бруски в точках fr)
-    for (const p of fr) {
-      const py = y + p * h;
-      beamPost(x - ft, py - pw / 2, ft, pw);
-      beamPost(x + w, py - pw / 2, ft, pw);
-    }
-    // на задних стенах — вертикальные бруски по краям и в центре
-    for (const p of [0, 0.5, 1.0]) {
-      const px = x + p * w;
-      beamPost(px - pw / 2, y - ft, pw, ft);
-      beamPost(px - pw / 2, y + h, pw, ft);
-    }
-    // 5. сплошные угловые посты
+    // 4. ВИДИМЫЕ балки-посты
+    for (const p of fr) { const py = y + p * h; beamPost(x - ft, py - g, ft, bw); beamPost(x + w, py - g, ft, bw); }
+    { const px = x + w / 2; beamPost(px - g, y - ft, bw, ft); beamPost(px - g, y + h, bw, ft); }
+    // угловые посты (крупные)
     const cp = ft;
-    beamPost(x - ft, y - ft, cp, cp);
-    beamPost(x + w + ft - cp, y - ft, cp, cp);
-    beamPost(x - ft, y + h + ft - cp, cp, cp);
-    beamPost(x + w + ft - cp, y + h + ft - cp, cp, cp);
+    beamPost(x - ft, y - ft, cp, cp); beamPost(x + w + ft - cp, y - ft, cp, cp);
+    beamPost(x - ft, y + h + ft - cp, cp, cp); beamPost(x + w + ft - cp, y + h + ft - cp, cp, cp);
 
-    // 6. грани рамы
-    gfx.lineWidth = 1.5; gfx.strokeStyle = 'rgba(0,0,0,0.75)';
+    // 5. грань рамы
+    gfx.lineWidth = 1.5; gfx.strokeStyle = 'rgba(0,0,0,0.8)';
     gfx.strokeRect(x - ft, y - ft, w + 2 * ft, h + 2 * ft);
   }
 
@@ -337,7 +331,7 @@
   }
   function drawArrowHead(a, b, w) {
     const ang = Math.atan2(b.y - a.y, b.x - a.x);
-    const len = Math.max(12, w * 3.4), spread = Math.PI / 7;
+    const len = Math.max(7, w * 5.5), spread = Math.PI / 7;
     gfx.beginPath();
     gfx.moveTo(b.x, b.y);
     gfx.lineTo(b.x - len * Math.cos(ang - spread), b.y - len * Math.sin(ang - spread));
@@ -544,7 +538,7 @@
       active = { pointerId: e.pointerId, mode: 'path', drawing: d, undoPushed: true };
     } else if (state.tool === 'arrow' || state.tool === 'lob') {
       pushUndo();
-      const d = { type: state.tool, color: state.color, dash: state.dash, from: n, to: { x: n.x, y: n.y }, off: { x: 0, y: 0 } };
+      const d = { type: state.tool, color: state.color, dash: state.tool === 'lob' ? 'dotted' : state.dash, from: n, to: { x: n.x, y: n.y }, off: { x: 0, y: 0 } };
       state.drawings.push(d);
       active = { pointerId: e.pointerId, mode: state.tool, drawing: d, undoPushed: true };
       render();
