@@ -192,32 +192,70 @@
     }
     gfx.restore();
   }
+  // Панель стекла — гладкая тёмно-синяя с бликом
+  function glassPanel(rx, ry, rw, rh) {
+    gfx.fillStyle = '#2a3a58';
+    gfx.fillRect(rx, ry, rw, rh);
+    gfx.fillStyle = 'rgba(255,255,255,0.06)';
+    gfx.fillRect(rx, ry, rw, rh * 0.48);
+    gfx.strokeStyle = 'rgba(180,210,238,0.28)'; gfx.lineWidth = 1;
+    gfx.strokeRect(rx + 0.5, ry + 0.5, rw - 1, rh - 1);
+  }
+  // Чёрная балка-пост с гранями
+  function beamPost(rx, ry, rw, rh) {
+    gfx.fillStyle = '#04060b'; gfx.fillRect(rx, ry, rw, rh);
+    gfx.fillStyle = 'rgba(132,145,163,0.26)'; gfx.fillRect(rx, ry, rw, Math.max(1.2, rh * 0.24));
+    gfx.fillStyle = 'rgba(0,0,0,0.5)'; gfx.fillRect(rx, ry + rh - Math.max(1, rh * 0.2), rw, Math.max(1, rh * 0.2));
+  }
   function drawEnclosure(x, y, w, h) {
-    const ft = Math.max(9, w * 0.055);   // толщина рамы
-    const pw = ft * 1.3;                  // ширина чёрной балки-поста
-    // 1. чёрная рама (балки/каркас)
+    const ft = Math.max(9, w * 0.055);        // толщина рамы
+    const pw = Math.max(4, ft * 0.5);         // толщина балки-поста
+
+    // 1. чёрная база рамы
     gfx.fillStyle = '#06090f';
     gfx.fillRect(x - ft, y - ft, w + 2 * ft, ft);
     gfx.fillRect(x - ft, y + h, w + 2 * ft, ft);
     gfx.fillRect(x - ft, y, ft, h);
     gfx.fillRect(x + w, y, ft, h);
-    // 2. решётка — панелями между балками (углы + середина остаются чёрными балками)
-    const topSegs = [
-      [x - ft + pw, (x + w / 2 - pw / 2) - (x - ft + pw)],
-      [x + w / 2 + pw / 2, (x + w + ft - pw) - (x + w / 2 + pw / 2)],
-    ];
-    for (const [rx, rw] of topSegs) if (rw > 4) { hatchRect(rx, y - ft, rw, ft); hatchRect(rx, y + h, rw, ft); }
-    const sideSegs = [
-      [y + pw, (y + h / 2 - pw / 2) - (y + pw)],
-      [y + h / 2 + pw / 2, (y + h - pw) - (y + h / 2 + pw / 2)],
-    ];
-    for (const [ry, rh] of sideSegs) if (rh > 4) { hatchRect(x - ft, ry, ft, rh); hatchRect(x + w, ry, ft, rh); }
-    // 3. грани балок (объём)
-    gfx.lineWidth = 1.5; gfx.strokeStyle = 'rgba(150,162,178,0.20)';
-    gfx.strokeRect(x - ft + 0.75, y - ft + 0.75, w + 2 * ft - 1.5, h + 2 * ft - 1.5);
+
+    // 2. задние стены (верх/низ) — СТЕКЛО во всю ширину
+    glassPanel(x, y - ft, w, ft);
+    glassPanel(x, y + h, w, ft);
+
+    // 3. боковые стены (лево/право) — панели между балками: стекло у углов, решётка в середине
+    const fr = [0, 0.13, 0.29, 0.42, 0.5, 0.58, 0.71, 0.87, 1.0];
+    for (let i = 0; i < fr.length - 1; i++) {
+      const ry = y + fr[i] * h + pw / 2;
+      const rh = (fr[i + 1] - fr[i]) * h - pw;
+      if (rh <= 2) continue;
+      const paint = (i === 0 || i === fr.length - 2) ? glassPanel : hatchRect;
+      paint(x - ft, ry, ft, rh);
+      paint(x + w, ry, ft, rh);
+    }
+
+    // 4. балки-посты по боковым стенам (горизонтальные бруски в точках fr)
+    for (const p of fr) {
+      const py = y + p * h;
+      beamPost(x - ft, py - pw / 2, ft, pw);
+      beamPost(x + w, py - pw / 2, ft, pw);
+    }
+    // на задних стенах — вертикальные бруски по краям и в центре
+    for (const p of [0, 0.5, 1.0]) {
+      const px = x + p * w;
+      beamPost(px - pw / 2, y - ft, pw, ft);
+      beamPost(px - pw / 2, y + h, pw, ft);
+    }
+    // 5. сплошные угловые посты
+    const cp = ft;
+    beamPost(x - ft, y - ft, cp, cp);
+    beamPost(x + w + ft - cp, y - ft, cp, cp);
+    beamPost(x - ft, y + h + ft - cp, cp, cp);
+    beamPost(x + w + ft - cp, y + h + ft - cp, cp, cp);
+
+    // 6. грани рамы
     gfx.lineWidth = 2; gfx.strokeStyle = 'rgba(0,0,0,0.95)';
     gfx.strokeRect(x - ft, y - ft, w + 2 * ft, h + 2 * ft);
-    gfx.lineWidth = 1.5; gfx.strokeStyle = 'rgba(0,0,0,0.55)';
+    gfx.lineWidth = 1.5; gfx.strokeStyle = 'rgba(0,0,0,0.5)';
     gfx.strokeRect(x - 0.75, y - 0.75, w + 1.5, h + 1.5);
   }
 
@@ -247,8 +285,8 @@
 
     const svcTop = y + h * 0.1525, svcBot = y + h * 0.8475;
     hLine(x, x + w, svcTop); hLine(x, x + w, svcBot);
-    const cx = x + w / 2, netY = y + h / 2, oh = h * 0.014;
-    vLine(cx, y - oh, y + h + oh);
+    const cx = x + w / 2, netY = y + h / 2, oh = h * 0.022;
+    vLine(cx, svcTop - oh, svcBot + oh);
 
     // сетка
     gfx.save();
