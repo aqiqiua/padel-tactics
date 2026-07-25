@@ -102,9 +102,9 @@
   }
   function addFrame() {
     pushUndo();
-    state.frames.splice(state.current + 1, 0, { tokens: defaultTokens(), drawings: [] });
+    state.frames.splice(state.current + 1, 0, { tokens: JSON.parse(JSON.stringify(state.tokens)), drawings: [] });
     loadFrame(state.current + 1);
-    render(); updateFrameUI(); haptic('medium'); toast('Новый пустой кадр');
+    render(); updateFrameUI(); haptic('medium'); toast('Следующий момент: игроки на местах, рисунки чистые');
   }
   function duplicateFrame() {
     pushUndo();
@@ -114,14 +114,16 @@
       drawings: JSON.parse(JSON.stringify(src.drawings)),
     });
     loadFrame(state.current + 1);
-    render(); updateFrameUI(); haptic('medium'); toast('Копия кадра');
+    render(); updateFrameUI(); haptic('medium'); toast('Копия момента — вместе с рисунками');
   }
-  function deleteFrame() {
-    if (state.frames.length <= 1) { toast('Остался один кадр'); return; }
+  async function deleteFrame() {
+    if (state.frames.length <= 1) { toast('Нельзя удалить единственный момент'); return; }
+    const has = state.drawings.length > 0;
+    if (has && !(await ask('Удалить момент ' + (state.current + 1) + '?', 'Всё, что на нём нарисовано, пропадёт.', 'Удалить', true))) return;
     pushUndo();
     state.frames.splice(state.current, 1);
     loadFrame(Math.min(state.current, state.frames.length - 1));
-    render(); updateFrameUI(); haptic('rigid'); toast('Кадр удалён');
+    render(); updateFrameUI(); haptic('rigid'); toast('Момент удалён');
   }
   function updateFrameUI() {
     frCur.textContent = state.current + 1;
@@ -133,14 +135,14 @@
 
   // ---------- История ----------
   function snapshot() { return { frames: JSON.parse(JSON.stringify(state.frames)), current: state.current }; }
-  function pushUndo() { undoStack.push(snapshot()); if (undoStack.length > 60) undoStack.shift(); redoStack.length = 0; }
+  function pushUndo() { undoStack.push(snapshot()); if (undoStack.length > 60) undoStack.shift(); redoStack.length = 0; updateHistoryUI(); }
   function restoreSnap(snap) {
     state.frames = JSON.parse(JSON.stringify(snap.frames));
     loadFrame(Math.min(snap.current, state.frames.length - 1));
-    render(); updateFrameUI();
+    render(); updateFrameUI(); updateHistoryUI();
   }
-  function undo() { if (!undoStack.length) { toast('Нечего отменить'); return; } redoStack.push(snapshot()); restoreSnap(undoStack.pop()); haptic('light'); }
-  function redo() { if (!redoStack.length) { toast('Нечего вернуть'); return; } undoStack.push(snapshot()); restoreSnap(redoStack.pop()); haptic('light'); }
+  function undo() { if (!undoStack.length) { toast('Отменять пока нечего'); return; } redoStack.push(snapshot()); restoreSnap(undoStack.pop()); haptic('light'); }
+  function redo() { if (!redoStack.length) { toast('Возвращать пока нечего'); return; } undoStack.push(snapshot()); restoreSnap(redoStack.pop()); haptic('light'); }
 
   // ---------- Размер / DPI ----------
   function resize() {
@@ -470,7 +472,32 @@
     screenCtx.restore();
     positionSelectionUI();
     zoomResetBtn.classList.toggle('show', view.scale > 1.01);
+    scheduleSave();
   }
+
+  // ---------- Автосохранение текущей доски ----------
+  // Без него всё нарисованное пропадало при закрытии приложения.
+  const BOARD_KEY = 'padel_board_v1';
+  let saveTimer = null;
+  function saveBoardNow() {
+    clearTimeout(saveTimer); saveTimer = null;
+    try { localStorage.setItem(BOARD_KEY, JSON.stringify({ frames: state.frames, current: state.current })); } catch (_) {}
+  }
+  function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveBoardNow, 500); }
+  function restoreBoard() {
+    let raw = null;
+    try { raw = localStorage.getItem(BOARD_KEY); } catch (_) {}
+    if (!raw) return false;
+    try {
+      const data = JSON.parse(raw);
+      if (!data || !Array.isArray(data.frames) || !data.frames.length) return false;
+      state.frames = migrateFrames(data.frames);
+      state.current = Math.min(Math.max(0, data.current || 0), state.frames.length - 1);
+      return true;
+    } catch (_) { return false; }
+  }
+  window.addEventListener('pagehide', saveBoardNow);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveBoardNow(); });
 
   // ---------- Указатель / вид ----------
   const pointers = new Map();
@@ -491,10 +518,12 @@
     view.scale = newScale; view.tx = m.x - wx * newScale; view.ty = m.y - wy * newScale;
     clampView(); render();
   }
+  let zoomHintShown = false;
   function zoomAt(s, factor) {
     const newScale = clamp(view.scale * factor, 1, 4), f = newScale / view.scale;
     view.tx = s.x - (s.x - view.tx) * f; view.ty = s.y - (s.y - view.ty) * f; view.scale = newScale;
     clampView(); render();
+    if (!zoomHintShown && view.scale > 1.05) { zoomHintShown = true; toast('Двигай корт двумя пальцами. Кнопка 1:1 вернёт масштаб'); }
   }
   function abortActive() {
     if (!active) return;
@@ -538,7 +567,7 @@
       openTextEditor(r.left + scr.x, r.top + scr.y, { x: d.x, y: d.y }, d);
       return;
     }
-    view.scale = 1; view.tx = 0; view.ty = 0; render();
+    // Сброс зума — только кнопкой «1:1»: двойной тап по фишке случайно ронял масштаб
   });
   zoomResetBtn.addEventListener('click', () => { view.scale = 1; view.tx = 0; view.ty = 0; render(); haptic('light'); });
 
@@ -563,8 +592,13 @@
   function hitHandle(px, py) {
     if (!state.selected) return null;
     const R = HANDLE_HIT / view.scale;
-    for (const hh of handlesPx(state.selected)) if (Math.hypot(px - hh.px.x, py - hh.px.y) <= R) return hh;
-    return null;
+    // берём БЛИЖАЙШУЮ ручку: у короткой стрелки они накладываются
+    let best = null, bestD = Infinity;
+    for (const hh of handlesPx(state.selected)) {
+      const dd = Math.hypot(px - hh.px.x, py - hh.px.y);
+      if (dd <= R && dd < bestD) { bestD = dd; best = hh; }
+    }
+    return best;
   }
 
   function singleDown(e) {
@@ -671,7 +705,12 @@
     d.off = { x: nn.x - (d.from.x + d.to.x) / 2, y: nn.y - (d.from.y + d.to.y) / 2 };
   }
 
-  function finishDraw(d) { setTool('move'); select(d); haptic('light'); }
+  // Инструмент остаётся включённым — рисуем несколько стрелок подряд без перевыбора.
+  let drawHintShown = false;
+  function finishDraw(d) {
+    haptic('light');
+    if (!drawHintShown) { drawHintShown = true; toast('Рисуй дальше. Чтобы подвинуть или удалить — включи «Двигать»'); }
+  }
   function pathLenPx(d) { let L = 0; for (let i = 1; i < d.points.length; i++) { const a = toPx(d.points[i - 1]), b = toPx(d.points[i]); L += Math.hypot(b.x - a.x, b.y - a.y); } return L; }
   function translateDrawing(d, dx, dy) {
     if (d.type === 'text') { d.x += dx; d.y += dy; }
@@ -685,8 +724,15 @@
       return px >= b.x - thr && px <= b.x + b.w + thr && py >= b.y - thr && py <= b.y + b.h + thr;
     }
     if (d.type === 'zone') {
+      // Только рамка: иначе большая зона перехватывала все тапы внутри себя
       const a = toPx(d.from), b = toPx(d.to);
-      return px >= Math.min(a.x, b.x) - thr && px <= Math.max(a.x, b.x) + thr && py >= Math.min(a.y, b.y) - thr && py <= Math.max(a.y, b.y) + thr;
+      const x1 = Math.min(a.x, b.x), x2 = Math.max(a.x, b.x);
+      const y1 = Math.min(a.y, b.y), y2 = Math.max(a.y, b.y);
+      const inOuter = px >= x1 - thr && px <= x2 + thr && py >= y1 - thr && py <= y2 + thr;
+      if (!inOuter) return false;
+      const band = Math.max(thr, 14 / view.scale);
+      const inInner = px > x1 + band && px < x2 - band && py > y1 + band && py < y2 - band;
+      return !inInner;
     }
     if (isArrow(d)) {
       const a = toPx(d.from), b = toPx(d.to), c = toPx(arrowCtrl(d));
@@ -817,7 +863,6 @@
       state.color = c;
       for (const el of paletteEl.children) el.classList.toggle('active', el.dataset.color === c);
       if (state.selected) { pushUndo(); state.selected.color = c; render(); }
-      else if (state.tool === 'move') setTool('pen');
       haptic('select');
     });
     paletteEl.appendChild(s);
@@ -904,12 +949,17 @@
 
   // ---------- Верхние действия ----------
   document.getElementById('btn-undo').addEventListener('click', undo);
-  document.getElementById('btn-reset').addEventListener('click', () => {
+  const btnRedo = document.getElementById('btn-redo');
+  btnRedo.addEventListener('click', redo);
+  function updateHistoryUI() { btnRedo.hidden = redoStack.length === 0; }
+  document.getElementById('btn-reset').addEventListener('click', async () => {
+    const empty = !state.drawings.length;
+    if (!empty && !(await ask('Стереть всё на этом моменте?', 'Рисунки пропадут, игроки вернутся на стартовые места.', 'Стереть', true))) return;
     pushUndo();
     state.frames[state.current].tokens = defaultTokens();
     state.frames[state.current].drawings = [];
     loadFrame(state.current);
-    render(); haptic('medium'); toast('Кадр очищен');
+    render(); haptic('medium'); toast('Момент очищен');
   });
   document.getElementById('btn-share').addEventListener('click', shareImage);
 
@@ -934,11 +984,13 @@
     catch (_) { return null; }
   }
   const myTgId = () => { try { return (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) ? tg.initDataUnsafe.user.id : null; } catch (_) { return null; } };
+  let ownerKnown = false;   // не удалось прочитать владельца — прав не выдаём (fail-closed)
   const isOwner = () => { const me = myTgId(); return me != null && ownerId != null && String(me) === String(ownerId); };
-  const canPublish = () => ownerId == null || isOwner();
+  const canPublish = () => ownerKnown && (ownerId == null || isOwner());
   function updatePublishUI() { if (tplPublish) tplPublish.hidden = !canPublish(); }
   async function loadOwnerId() {
     const r = await sbFetch('app_config?select=value&key=eq.owner_id', { headers: sbHeaders() });
+    ownerKnown = r !== null;
     ownerId = (Array.isArray(r) && r[0]) ? r[0].value : null;
     updatePublishUI();
   }
@@ -946,8 +998,10 @@
     await sbFetch('app_config', { method: 'POST', headers: sbHeaders({ 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }), body: JSON.stringify({ key: 'owner_id', value: String(id) }) });
     ownerId = String(id);
   }
+  let sharedLoadFailed = false;
   async function loadPresets() {
     const r = await sbFetch('presets?select=*&order=created_at.desc', { headers: sbHeaders() });
+    sharedLoadFailed = r === null;
     return Array.isArray(r) ? r : [];
   }
   async function publishPreset(name, frames) {
@@ -1046,7 +1100,9 @@
 
   if (tplPublish) tplPublish.addEventListener('click', async () => {
     let name = (tplName.value || '').trim();
-    if (!name) name = (currentTpl && currentTpl.name) || ('Общая ' + (Date.now() % 10000));
+    if (!name) name = (currentTpl && currentTpl.name) || '';
+    if (!name) { toast('Сначала впиши название схемы'); try { tplName.focus(); } catch (_) {} return; }
+    if (!(await ask('Выложить для всех?', '«' + name + '» появится у всех, кто пользуется приложением.', 'Выложить'))) return;
     toast('Публикую…');
     const res = await publishPreset(name, JSON.parse(JSON.stringify(state.frames)));
     if (!res) { toast('Не удалось опубликовать'); return; }
@@ -1069,17 +1125,24 @@
     }
     return frames;
   }
+  // Открытие затирает доску — спрашиваем, если на ней есть работа
+  async function confirmReplace() {
+    if (isBlankBoard()) return true;
+    return ask('Открыть схему?', 'То, что сейчас на корте, будет заменено. Сохрани его, если нужно.', 'Открыть');
+  }
   async function openTemplate(id) {
     const tpl = (await loadTemplates()).find((t) => t.id === id);
     if (!tpl) return;
+    if (!(await confirmReplace())) return;
     let frames = tpl.frames;
     if (!frames || !frames.length) frames = [{ tokens: tpl.tokens || defaultTokens(), drawings: tpl.drawings || [] }];
     pushUndo();
     state.frames = migrateFrames(JSON.parse(JSON.stringify(frames)));
     currentTpl = { id: tpl.id, name: tpl.name };
-    loadFrame(0); render(); updateFrameUI(); closeSheet(); haptic('medium'); toast('Схема загружена — меняй и жми «Обновить»');
+    loadFrame(0); render(); updateFrameUI(); closeSheet(); haptic('medium'); toast('Схема открыта. Изменения сохрани кнопкой «Обновить»');
   }
-  async function deleteTemplate(id) {
+  async function deleteTemplate(id, name) {
+    if (!(await ask('Удалить схему?', '«' + (name || '') + '» удалится навсегда — вернуть не получится.', 'Удалить', true))) return;
     const list = (await loadTemplates()).filter((t) => t.id !== id);
     await persistTemplates(list);
     if (currentTpl && currentTpl.id === id) { currentTpl = null; tplUpdate.hidden = true; }
@@ -1099,16 +1162,20 @@
     pushUndo();
     if (isBlankBoard()) { state.frames = add; loadFrame(0); }
     else { const start = state.frames.length; state.frames.push(...add); loadFrame(start); }
-    render(); updateFrameUI(); haptic('medium'); toast('Добавлено кадров: ' + add.length + ' (всего ' + state.frames.length + ')');
+    render(); updateFrameUI(); haptic('medium'); toast('Схема добавлена в конец. Теперь ' + plural(state.frames.length, 'момент', 'момента', 'моментов'));
   }
   async function appendTemplate(id) { const tpl = (await loadTemplates()).find((t) => t.id === id); if (tpl) appendFrames(framesOf(tpl)); }
   function appendPreset(tpl) { appendFrames(framesOf(tpl)); }
-  function openPreset(tpl) {
+  async function openPreset(tpl) {
+    if (!(await confirmReplace())) return;
     pushUndo();
     state.frames = framesOf(tpl); currentTpl = null;
-    loadFrame(0); render(); updateFrameUI(); closeSheet(); haptic('medium'); toast('Загружена: ' + tpl.name);
+    loadFrame(0); render(); updateFrameUI(); closeSheet(); haptic('medium'); toast('Открыта схема «' + tpl.name + '»');
   }
-  async function deleteSharedPreset(id) { await deletePreset(id); renderTemplateList(); haptic('rigid'); toast('Общая схема удалена'); }
+  async function deleteSharedPreset(id, name) {
+    if (!(await ask('Удалить общую схему?', '«' + (name || '') + '» пропадёт у всех, кто пользуется приложением.', 'Удалить у всех', true))) return;
+    await deletePreset(id); renderTemplateList(); haptic('rigid'); toast('Общая схема удалена');
+  }
 
   function fmtDate(ts) {
     try {
@@ -1120,8 +1187,8 @@
     const row = document.createElement('div'); row.className = 'tpl-row';
     const nFrames = tpl.frames ? tpl.frames.length : 1;
     const del = opts.canDelete ? '<button class="tpl-del" aria-label="Удалить"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg></button>' : '';
-    row.innerHTML = '<div class="tpl-open"><div class="tpl-nm"></div><div class="tpl-meta">' + fmtDate(tpl.createdAt || tpl.created_at) + ' · ' + nFrames + ' кадр.</div></div>' +
-      '<button class="tpl-add" aria-label="Добавить кадры" title="Добавить кадры к текущей"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>' + del;
+    row.innerHTML = '<div class="tpl-open"><div class="tpl-nm"></div><div class="tpl-meta">' + fmtDate(tpl.createdAt || tpl.created_at) + ' · ' + plural(nFrames, 'момент', 'момента', 'моментов') + '</div></div>' +
+      '<button class="tpl-add" aria-label="Добавить к текущей" title="Добавить моменты этой схемы к текущей"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>' + del;
     row.querySelector('.tpl-nm').textContent = tpl.name;
     row.querySelector('.tpl-open').addEventListener('click', opts.onOpen);
     row.querySelector('.tpl-add').addEventListener('click', (ev) => { ev.stopPropagation(); opts.onAppend(); });
@@ -1157,7 +1224,7 @@
     state.frames = frames; currentTpl = null;
     loadFrame(0); render(); updateFrameUI();
     exitMerge();
-    haptic('medium'); toast('Собрано ' + frames.length + ' кадр(ов) — назови и сохрани/опубликуй');
+    haptic('medium'); toast('Готово: ' + plural(frames.length, 'момент', 'момента', 'моментов') + '. Дай название и сохрани');
     try { tplName.focus(); } catch (_) {}
   });
   function makeMergeRow(tpl) {
@@ -1166,7 +1233,7 @@
     if (sel) row.classList.add('sel');
     const nFrames = tpl.frames ? tpl.frames.length : 1;
     row.innerHTML = '<div class="merge-badge">' + (sel ? (idx + 1) : '') + '</div>' +
-      '<div class="tpl-open"><div class="tpl-nm"></div><div class="tpl-meta">' + nFrames + ' кадр.</div></div>';
+      '<div class="tpl-open"><div class="tpl-nm"></div><div class="tpl-meta">' + plural(nFrames, 'момент', 'момента', 'моментов') + '</div></div>';
     row.querySelector('.tpl-nm').textContent = tpl.name;
     row.addEventListener('click', () => toggleMergeSel(tpl));
     return row;
@@ -1177,16 +1244,22 @@
     const [shared, mine] = await Promise.all([loadPresets(), loadTemplates(), loadOwnerId()]);
     tplList.innerHTML = '';
     const section = (title, list, kind) => {
-      if (kind === 'shared' && !list.length) return;
+      if (kind === 'shared' && !list.length) {
+        if (!sharedLoadFailed) return;
+        tplList.appendChild(sectionHeader(title));
+        const e = document.createElement('div'); e.className = 'tpl-empty';
+        e.textContent = 'Не удалось загрузить общие схемы. Проверь интернет и открой окно заново.';
+        tplList.appendChild(e); return;
+      }
       tplList.appendChild(sectionHeader(title));
-      if (!list.length) { const e = document.createElement('div'); e.className = 'tpl-empty'; e.textContent = 'Пока нет своих схем. Расставь кадры и нажми «Сохранить».'; tplList.appendChild(e); return; }
+      if (!list.length) { const e = document.createElement('div'); e.className = 'tpl-empty'; e.textContent = 'Здесь будут твои схемы. Нарисуй тактику на корте, вернись сюда и нажми «Сохранить».'; tplList.appendChild(e); return; }
       for (const tpl of list) {
         if (mergeMode) { tplList.appendChild(makeMergeRow(tpl)); continue; }
         tplList.appendChild(makeRow(tpl, {
           canDelete: kind === 'shared' ? canPublish() : true,
           onOpen: kind === 'shared' ? () => openPreset(tpl) : () => openTemplate(tpl.id),
           onAppend: kind === 'shared' ? () => appendPreset(tpl) : () => appendTemplate(tpl.id),
-          onDelete: kind === 'shared' ? () => deleteSharedPreset(tpl.id) : () => deleteTemplate(tpl.id),
+          onDelete: kind === 'shared' ? () => deleteSharedPreset(tpl.id, tpl.name) : () => deleteTemplate(tpl.id, tpl.name),
         }));
       }
     };
@@ -1197,25 +1270,61 @@
   // ---------- Экспорт ----------
   async function shareImage() {
     haptic('light');
+    let all = false;
+    if (state.frames.length > 1) {
+      const c = await ask('Что отправить?', 'В схеме ' + plural(state.frames.length, 'момент', 'момента', 'моментов') + '.',
+        'Все ' + state.frames.length, false, 'Только этот');
+      if (c === null) return;
+      all = c === true;
+    }
     const wasSelected = state.selected; select(null);
-    const blob = await exportBlob();
+    const blob = await exportBlob(all);
     if (wasSelected) select(wasSelected);
     if (!blob) { toast('Не удалось создать картинку'); return; }
     const file = new File([blob], 'padel-tactics.png', { type: 'image/png' });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: 'Padel Tactics' }); return; } catch (_) {} }
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'Padel Tactics' }); return; }
+      catch (err) { if (err && err.name === 'AbortError') return; }   // пользователь просто закрыл — молчим
+    }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = 'padel-tactics.png';
     document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000); toast('Картинка сохранена');
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast('Картинка готова. Если не сохранилась — открой её и нажми «Сохранить в галерею»');
   }
-  function exportBlob() {
-    const scale = 2, outW = 700, outH = 1400;
-    const off = document.createElement('canvas'); off.width = outW * scale; off.height = outH * scale;
+  // Временно переключить state на другой кадр (для экспорта раскадровки)
+  function withFrame(i, fn) {
+    const pt = state.tokens, pd = state.drawings;
+    state.tokens = state.frames[i].tokens; state.drawings = state.frames[i].drawings;
+    try { fn(); } finally { state.tokens = pt; state.drawings = pd; }
+  }
+  function exportBlob(all) {
+    const idx = all ? state.frames.map((_, i) => i) : [state.current];
+    const multi = idx.length > 1;
+    const cellW = 700, cellH = 1400, gap = 26, labelH = multi ? 58 : 0;
+    const cols = multi ? Math.min(2, idx.length) : 1;
+    const rows = Math.ceil(idx.length / cols);
+    const outW = cols * cellW + (cols + 1) * gap;
+    const outH = rows * (cellH + labelH) + (rows + 1) * gap;
+    const scale = multi ? 1.3 : 2;
+    const off = document.createElement('canvas');
+    off.width = Math.round(outW * scale); off.height = Math.round(outH * scale);
     const octx = off.getContext('2d'); octx.scale(scale, scale);
     octx.fillStyle = '#080D1A'; octx.fillRect(0, 0, outW, outH);
-    const pad = 46, cw = outW - pad * 2, ch = cw * 2;
-    const tmpCourt = { x: pad, y: (outH - ch) / 2, w: cw, h: ch };
-    return new Promise((resolve) => { withTarget(octx, tmpCourt, renderScene); off.toBlob((b) => resolve(b), 'image/png'); });
+    idx.forEach((fi, k) => {
+      const c = k % cols, r = Math.floor(k / cols);
+      const x0 = gap + c * (cellW + gap), y0 = gap + r * (cellH + labelH + gap);
+      if (multi) {
+        octx.fillStyle = '#34D399';
+        octx.font = '800 36px Manrope, -apple-system, sans-serif';
+        octx.textAlign = 'left'; octx.textBaseline = 'middle';
+        octx.fillText('Момент ' + (fi + 1), x0 + 10, y0 + labelH / 2);
+      }
+      const pad = 46, cw = cellW - pad * 2, ch = cw * 2;
+      const tmpCourt = { x: x0 + pad, y: y0 + labelH + (cellH - ch) / 2, w: cw, h: ch };
+      withFrame(fi, () => withTarget(octx, tmpCourt, renderScene));
+    });
+    return new Promise((resolve) => off.toBlob((b) => resolve(b), 'image/png'));
   }
 
   // ---------- Утилиты ----------
@@ -1224,7 +1333,43 @@
   function hexToRgb(hex) { let h = hex.replace('#', ''); if (h.length === 3) h = h.split('').map((x) => x + x).join(''); const n = parseInt(h, 16); return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 }; }
 
   let toastTimer = null;
-  function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1600); }
+  // Длинные подсказки не успевали прочитаться — время зависит от длины
+  function toast(msg) {
+    toastEl.textContent = msg; toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), Math.min(4500, 1500 + msg.length * 45));
+  }
+
+  // «1 момент / 2 момента / 5 моментов»
+  function plural(n, one, few, many) {
+    const a = Math.abs(n) % 100, b = a % 10;
+    const w = (a > 10 && a < 20) ? many : (b === 1 ? one : (b >= 2 && b <= 4 ? few : many));
+    return n + ' ' + w;
+  }
+
+  // Подтверждение в стиле приложения (никаких системных окон)
+  const askOverlay = document.getElementById('ask-overlay');
+  const askTitle = document.getElementById('ask-title');
+  const askText = document.getElementById('ask-text');
+  const askYes = document.getElementById('ask-yes');
+  const askNo = document.getElementById('ask-no');
+  let askResolve = null;
+  // true — согласие, false — вторая кнопка, null — закрыл, не выбрав
+  function ask(title, text, yesLabel, danger, noLabel) {
+    askTitle.textContent = title;
+    askText.textContent = text || '';
+    askText.hidden = !text;
+    askYes.textContent = yesLabel || 'Да';
+    askNo.textContent = noLabel || 'Отмена';
+    askYes.classList.toggle('danger', !!danger);
+    askOverlay.hidden = false;
+    haptic('light');
+    return new Promise((r) => { askResolve = r; });
+  }
+  function closeAsk(v) { askOverlay.hidden = true; const r = askResolve; askResolve = null; if (r) r(v); }
+  askYes.addEventListener('click', () => closeAsk(true));
+  askNo.addEventListener('click', () => closeAsk(false));
+  askOverlay.addEventListener('click', (e) => { if (e.target === askOverlay) closeAsk(null); });
 
   function pasteClipboard() {
     if (!clipboard) return;
@@ -1268,7 +1413,19 @@
   window.addEventListener('resize', resize);
   if (window.ResizeObserver) new ResizeObserver(resize).observe(courtArea);
 
-  loadFrame(0);
+  // Первый запуск — короткое объяснение, что вообще делать
+  const HELLO_KEY = 'padel_hello_v1';
+  const helloEl = document.getElementById('hello');
+  try {
+    if (!localStorage.getItem(HELLO_KEY)) helloEl.hidden = false;
+  } catch (_) {}
+  document.getElementById('hello-ok').addEventListener('click', () => {
+    helloEl.hidden = true; haptic('medium');
+    try { localStorage.setItem(HELLO_KEY, '1'); } catch (_) {}
+  });
+
+  const restored = restoreBoard();
+  loadFrame(restored ? state.current : 0);
   setTool('move');
   updateFrameUI();
   for (const b of stylesEl.children) b.classList.toggle('active', b.dataset.dash === state.dash);

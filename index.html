@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=26" />
+  <link rel="stylesheet" href="style.css?v=27" />
 </head>
 <body>
   <div class="aurora" aria-hidden="true">
@@ -38,10 +38,13 @@
         <button class="icon-btn" id="btn-undo" title="Отменить (Cmd+Z)" aria-label="Отменить">
           <svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5M4 12h11a5 5 0 0 1 0 10h-1"/></svg>
         </button>
-        <button class="icon-btn" id="btn-reset" title="Очистить кадр" aria-label="Очистить кадр">
+        <button class="icon-btn" id="btn-redo" title="Вернуть" aria-label="Вернуть" hidden>
+          <svg viewBox="0 0 24 24"><path d="m15 7 5 5-5 5M20 12H9a5 5 0 0 0 0 10h1"/></svg>
+        </button>
+        <button class="icon-btn" id="btn-reset" title="Стереть всё на моменте" aria-label="Стереть всё на моменте">
           <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M10 11v6M14 11v6"/></svg>
         </button>
-        <button class="icon-btn" id="btn-templates" title="Шаблоны схем" aria-label="Шаблоны">
+        <button class="icon-btn" id="btn-templates" title="Мои схемы" aria-label="Мои схемы">
           <svg viewBox="0 0 24 24"><path d="M12 3 3 7.5 12 12l9-4.5L12 3zM3 12.5 12 17l9-4.5M3 16.5 12 21l9-4.5"/></svg>
         </button>
         <button class="icon-btn accent" id="btn-share" title="Поделиться / сохранить" aria-label="Поделиться">
@@ -60,21 +63,21 @@
 
     <div class="framebar">
       <div class="fr-wrap">
-        <button class="fr-btn" id="fr-prev" title="Предыдущий кадр" aria-label="Предыдущий">
+        <button class="fr-btn" id="fr-prev" title="Предыдущий момент" aria-label="Предыдущий момент">
           <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>
         </button>
-        <div class="fr-count">Кадр <b id="fr-cur">1</b> / <span id="fr-total">1</span></div>
-        <button class="fr-btn" id="fr-next" title="Следующий кадр" aria-label="Следующий">
+        <div class="fr-count">Момент <b id="fr-cur">1</b> из <span id="fr-total">1</span></div>
+        <button class="fr-btn" id="fr-next" title="Следующий момент" aria-label="Следующий момент">
           <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
         </button>
         <div class="fr-sep"></div>
-        <button class="fr-btn fr-add" id="fr-add" title="Новый пустой кадр" aria-label="Новый кадр">
+        <button class="fr-btn fr-add" id="fr-add" title="Следующий момент" aria-label="Следующий момент">
           <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
         </button>
-        <button class="fr-btn" id="fr-dup" title="Копия текущего кадра" aria-label="Копия кадра">
+        <button class="fr-btn" id="fr-dup" title="Копия момента" aria-label="Копия момента">
           <svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
         </button>
-        <button class="fr-btn" id="fr-del" title="Удалить кадр" aria-label="Удалить кадр">
+        <button class="fr-btn" id="fr-del" title="Удалить момент" aria-label="Удалить момент">
           <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg>
         </button>
       </div>
@@ -88,7 +91,7 @@
         </button>
         <button class="tool" data-tool="pen" title="Рисовать от руки">
           <svg viewBox="0 0 24 24"><path d="M3 21l3.5-1L20 6.5a2.1 2.1 0 0 0-3-3L3.5 17 3 21z"/></svg>
-          <span>Кисть</span>
+          <span>От руки</span>
         </button>
         <button class="tool" data-tool="arrow" title="Стрелка (прямая, гнётся средней точкой)">
           <svg viewBox="0 0 24 24"><path d="M4 20 20 4M20 4h-7M20 4v7"/></svg>
@@ -147,23 +150,23 @@
 
   <!-- Панель шаблонов -->
   <div class="sheet-overlay" id="sheet-overlay"></div>
-  <div class="sheet" id="sheet" role="dialog" aria-label="Шаблоны схем">
+  <div class="sheet" id="sheet" role="dialog" aria-label="Мои схемы">
     <div class="sheet-grab"></div>
     <div class="sheet-head">
-      <span class="sheet-title">Шаблоны схем</span>
+      <span class="sheet-title">Мои схемы</span>
       <button class="icon-btn" id="sheet-close" aria-label="Закрыть">
         <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
       </button>
     </div>
     <div class="sheet-save">
-      <input id="tpl-name" type="text" maxlength="40" placeholder="Название схемы" autocomplete="off" />
+      <input id="tpl-name" type="text" maxlength="40" placeholder="Название, например: выход из обороны" autocomplete="off" />
       <button id="tpl-update" hidden>Обновить</button>
       <button id="tpl-save">Сохранить</button>
     </div>
-    <button id="tpl-publish" class="tpl-publish" hidden>Опубликовать в общие (видно всем)</button>
-    <button id="tpl-merge" class="tpl-merge">Объединить схемы в раскадровку</button>
+    <button id="tpl-publish" class="tpl-publish" hidden>Выложить схему для всех</button>
+    <button id="tpl-merge" class="tpl-merge">Склеить несколько схем в одну</button>
     <div id="merge-bar" class="merge-bar" hidden>
-      <span id="merge-count">Тапай схемы по порядку</span>
+      <span id="merge-count">Нажимай схемы по порядку</span>
       <div class="merge-actions">
         <button id="merge-cancel" class="merge-cancel">Отмена</button>
         <button id="merge-build" class="merge-build" disabled>Собрать</button>
@@ -172,8 +175,34 @@
     <div class="sheet-list" id="tpl-list"></div>
   </div>
 
+  <!-- Первый запуск -->
+  <div class="hello-overlay" id="hello" hidden>
+    <div class="hello">
+      <div class="hello-title">Тактическая доска</div>
+      <ul class="hello-list">
+        <li><b>Тащи кружки пальцем</b> — это игроки. Зелёные снизу — вы, красные сверху — соперники.</li>
+        <li><b>Выбери инструмент внизу</b> и рисуй прямо по корту: стрелка, свеча, зона, надпись.</li>
+        <li><b>Кнопка «+»</b> создаёт следующий момент розыгрыша — получается раскадровка.</li>
+        <li><b>Стрелка вверх</b> сверху — отправить схему картинкой в чат.</li>
+      </ul>
+      <button class="hello-ok" id="hello-ok">Понятно, начнём</button>
+    </div>
+  </div>
+
+  <!-- Подтверждение (в стиле приложения, не системное окно) -->
+  <div class="ask-overlay" id="ask-overlay" hidden>
+    <div class="ask" role="dialog" aria-modal="true">
+      <div class="ask-title" id="ask-title"></div>
+      <div class="ask-text" id="ask-text"></div>
+      <div class="ask-btns">
+        <button class="ask-no" id="ask-no">Отмена</button>
+        <button class="ask-yes" id="ask-yes">Да</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
-  <script src="app.js?v=26"></script>
+  <script src="app.js?v=27"></script>
 </body>
 </html>
