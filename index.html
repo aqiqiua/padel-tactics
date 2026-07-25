@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=26" />
 </head>
 <body>
   <div class="aurora" aria-hidden="true">
@@ -134,6 +134,13 @@
           <span class="row-label">ФОН</span>
           <input type="range" id="alpha-range" min="0" max="60" value="15" step="1" />
         </div>
+        <div class="text-size" id="text-size" hidden>
+          <span class="row-label">РАЗМЕР</span>
+          <button class="tsize" data-size="0.035" title="Мелкий"><span style="font-size:11px">А</span></button>
+          <button class="tsize" data-size="0.05" title="Средний"><span style="font-size:15px">А</span></button>
+          <button class="tsize" data-size="0.07" title="Крупный"><span style="font-size:19px">А</span></button>
+          <button class="tsize" data-size="0.095" title="Большой"><span style="font-size:24px">А</span></button>
+        </div>
       </div>
     </footer>
   </div>
@@ -167,6 +174,6 @@
 
   <div class="toast" id="toast"></div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=26"></script>
 </body>
 </html>

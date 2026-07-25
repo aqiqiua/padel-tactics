@@ -143,6 +143,11 @@ html, body {
 .width.active { opacity: 1; border-color: var(--accent); box-shadow: 0 0 8px rgba(52,211,153,0.25); }
 .wdot { display: block; border-radius: 50%; background: var(--text); }
 
+.text-size { display: flex; align-items: center; gap: 6px; flex: none; }
+.tsize { width: 34px; height: 30px; border: 1px solid var(--glass-border); border-radius: 8px; background: var(--glass); display: grid; place-items: center; cursor: pointer; opacity: 0.6; color: var(--text); font-weight: 700; line-height: 1; transition: opacity 0.15s ease, border-color 0.15s ease, transform 0.06s ease; }
+.tsize:active { transform: scale(0.9); }
+.tsize.active { opacity: 1; border-color: var(--accent); box-shadow: 0 0 8px rgba(52,211,153,0.25); }
+
 /* ---------- Поле текстовой заметки ---------- */
 .text-input {
   position: fixed; z-index: 62; display: none;

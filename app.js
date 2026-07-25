@@ -69,6 +69,7 @@
     dash: 'solid',       // solid | dashed | dotted
     width: 'med',        // thin | med | thick
     zoneAlpha: 0.15,
+    textSize: 0.05,      // доля ширины корта
     frames: [{ tokens: defaultTokens(), drawings: [] }],
     current: 0,
     tokens: null, drawings: null,
@@ -581,6 +582,7 @@
       return;
     }
     if (state.tool === 'text') {
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
       const r = canvas.getBoundingClientRect(), scr = screenPos(e);
       openTextEditor(r.left + scr.x, r.top + scr.y, normPt(pos.x, pos.y), null);
       return;
@@ -747,16 +749,20 @@
   textInput.setAttribute('placeholder', 'Заметка…');
   textInput.setAttribute('autocomplete', 'off');
   document.body.appendChild(textInput);
-  let editingText = null;
+  let editingText = null, textOpenAt = 0, textRefocused = false;
 
   function openTextEditor(sx, sy, n, existing) {
+    if (editingText) commitText();   // зафиксировать прошлую заметку, если была в процессе ввода
     editingText = { n, existing };
+    textOpenAt = Date.now(); textRefocused = false;
     textInput.value = existing ? existing.text : '';
-    textInput.style.left = Math.max(8, Math.min(window.innerWidth - 190, sx - 16)) + 'px';
-    textInput.style.top = Math.max(8, sy - 16) + 'px';
+    textInput.style.left = Math.max(8, Math.min(window.innerWidth - 228, sx - 16)) + 'px';
+    textInput.style.top = Math.max(8, Math.min(sy - 16, Math.round(window.innerHeight * 0.38))) + 'px';
     textInput.style.display = 'block';
     if (existing) { existing._editing = true; render(); }
-    setTimeout(() => { textInput.focus(); textInput.select(); }, 10);
+    // фокус синхронно в рамках жеста — иначе на мобиле клавиатура не открывается и поле сразу теряет фокус
+    textInput.focus(); textInput.select();
+    setTimeout(() => { if (editingText) { textInput.focus(); textInput.select(); } }, 40);
   }
   function commitText() {
     if (!editingText) return;
@@ -770,7 +776,7 @@
       else { removeDrawing(ed.existing); }
     } else if (val) {
       pushUndo();
-      const d = { type: 'text', color: state.color, text: val, x: ed.n.x, y: ed.n.y, size: 0.05 };
+      const d = { type: 'text', color: state.color, text: val, x: ed.n.x, y: ed.n.y, size: state.textSize };
       state.drawings.push(d);
       setTool('move'); select(d);
     }
@@ -781,7 +787,16 @@
     if (e.key === 'Enter') { e.preventDefault(); commitText(); }
     else if (e.key === 'Escape') { const ed = editingText; editingText = null; textInput.style.display = 'none'; if (ed && ed.existing) ed.existing._editing = false; render(); }
   });
-  textInput.addEventListener('blur', () => { if (editingText) commitText(); });
+  textInput.addEventListener('blur', () => {
+    if (!editingText) return;
+    // мгновенный «спонтанный» blur на мобиле (до ввода) — возвращаем фокус, а не удаляем поле
+    if (!editingText.existing && !textInput.value.trim() && !textRefocused && Date.now() - textOpenAt < 400) {
+      textRefocused = true;
+      setTimeout(() => { if (editingText) textInput.focus(); }, 0);
+      return;
+    }
+    commitText();
+  });
 
   // ---------- Инструменты ----------
   const toolsEl = document.getElementById('tools');
@@ -827,6 +842,16 @@
     haptic('select');
   });
 
+  // Размер шрифта заметки
+  const textSizeEl = document.getElementById('text-size');
+  textSizeEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.tsize'); if (!btn) return;
+    state.textSize = parseFloat(btn.dataset.size);
+    for (const b of textSizeEl.children) if (b.dataset) b.classList.toggle('active', parseFloat(b.dataset.size) === state.textSize);
+    if (state.selected && state.selected.type === 'text') { pushUndo(); state.selected.size = state.textSize; render(); }
+    haptic('select');
+  });
+
   // Заливка зоны (непрозрачность)
   const zoneAlphaWrap = document.getElementById('zone-alpha');
   const alphaRange = document.getElementById('alpha-range');
@@ -844,11 +869,18 @@
     const width = sel ? (sel.width || 'med') : state.width;
     for (const b of widthsEl.children) b.classList.toggle('active', b.dataset.width === width);
     const isZone = (sel && sel.type === 'zone') || (!sel && state.tool === 'zone');
+    const isText = (sel && sel.type === 'text') || (!sel && state.tool === 'text');
+    stylesEl.hidden = isText;
+    widthsEl.hidden = isZone || isText;
     zoneAlphaWrap.hidden = !isZone;
-    widthsEl.hidden = isZone;
+    textSizeEl.hidden = !isText;
     if (isZone) {
       const a = sel && sel.type === 'zone' ? (sel.alpha != null ? sel.alpha : state.zoneAlpha) : state.zoneAlpha;
       alphaRange.value = Math.round(a * 100);
+    }
+    if (isText) {
+      const sz = sel ? (sel.size || 0.05) : state.textSize;
+      for (const b of textSizeEl.children) if (b.dataset.size) b.classList.toggle('active', parseFloat(b.dataset.size) === sz);
     }
     if (sel) {
       const cur = sel.color;
