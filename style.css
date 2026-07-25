@@ -54,8 +54,8 @@ html, body {
 /* ---------- Верхняя панель ---------- */
 .topbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px 4px; gap: 8px; flex: 0 0 auto; }
 .brand { display: flex; align-items: center; gap: 11px; }
-.brand-logo { width: 38px; height: 38px; border-radius: 11px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: grid; place-items: center; box-shadow: 0 8px 20px rgba(20,184,166,0.32); }
-.brand-logo svg { width: 21px; height: 21px; }
+.brand-logo { width: 38px; height: 38px; border-radius: 11px; overflow: hidden; display: grid; place-items: center; box-shadow: 0 8px 20px rgba(20,184,166,0.32); }
+.brand-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .brand-eyebrow { font: 800 9px var(--font-mono); letter-spacing: 0.22em; color: var(--accent); }
 .brand-title { font: 800 18px var(--font-ui); letter-spacing: -0.3px; color: var(--text); margin-top: 1px; }
 
@@ -241,16 +241,6 @@ html, body {
   box-shadow: 0 12px 30px rgba(0,0,0,0.5);
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-/* ---------- Первый запуск ---------- */
-.hello-overlay { position: fixed; inset: 0; z-index: 75; background: rgba(4,8,16,0.86); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: grid; place-items: center; padding: 22px; }
-.hello { width: 100%; max-width: 340px; background: #0d1424; border: 1px solid var(--glass-border); border-radius: 20px; padding: 20px; box-shadow: 0 24px 60px rgba(0,0,0,0.6); }
-.hello-title { font: 800 19px var(--font-ui); color: var(--text); }
-.hello-list { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 11px; }
-.hello-list li { font: 500 13.5px/1.45 var(--font-ui); color: var(--hint); padding-left: 16px; position: relative; }
-.hello-list li::before { content: ''; position: absolute; left: 0; top: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-.hello-list b { color: var(--text); font-weight: 700; }
-.hello-ok { width: 100%; margin-top: 18px; padding: 13px; border: none; border-radius: 13px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink); font: 800 14px var(--font-ui); cursor: pointer; }
 
 /* ---------- Подтверждение ---------- */
 .ask-overlay { position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); display: grid; place-items: center; padding: 24px; }

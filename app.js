@@ -102,9 +102,9 @@
   }
   function addFrame() {
     pushUndo();
-    state.frames.splice(state.current + 1, 0, { tokens: JSON.parse(JSON.stringify(state.tokens)), drawings: [] });
+    state.frames.splice(state.current + 1, 0, { tokens: defaultTokens(), drawings: [] });
     loadFrame(state.current + 1);
-    render(); updateFrameUI(); haptic('medium'); toast('Следующий момент: игроки на местах, рисунки чистые');
+    render(); updateFrameUI(); haptic('medium'); toast('Новый пустой момент');
   }
   function duplicateFrame() {
     pushUndo();
@@ -518,12 +518,10 @@
     view.scale = newScale; view.tx = m.x - wx * newScale; view.ty = m.y - wy * newScale;
     clampView(); render();
   }
-  let zoomHintShown = false;
   function zoomAt(s, factor) {
     const newScale = clamp(view.scale * factor, 1, 4), f = newScale / view.scale;
     view.tx = s.x - (s.x - view.tx) * f; view.ty = s.y - (s.y - view.ty) * f; view.scale = newScale;
     clampView(); render();
-    if (!zoomHintShown && view.scale > 1.05) { zoomHintShown = true; toast('Двигай корт двумя пальцами. Кнопка 1:1 вернёт масштаб'); }
   }
   function abortActive() {
     if (!active) return;
@@ -705,12 +703,7 @@
     d.off = { x: nn.x - (d.from.x + d.to.x) / 2, y: nn.y - (d.from.y + d.to.y) / 2 };
   }
 
-  // Инструмент остаётся включённым — рисуем несколько стрелок подряд без перевыбора.
-  let drawHintShown = false;
-  function finishDraw(d) {
-    haptic('light');
-    if (!drawHintShown) { drawHintShown = true; toast('Рисуй дальше. Чтобы подвинуть или удалить — включи «Двигать»'); }
-  }
+  function finishDraw(d) { setTool('move'); select(d); haptic('light'); }
   function pathLenPx(d) { let L = 0; for (let i = 1; i < d.points.length; i++) { const a = toPx(d.points[i - 1]), b = toPx(d.points[i]); L += Math.hypot(b.x - a.x, b.y - a.y); } return L; }
   function translateDrawing(d, dx, dy) {
     if (d.type === 'text') { d.x += dx; d.y += dy; }
@@ -1412,17 +1405,6 @@
   // ---------- Инициализация ----------
   window.addEventListener('resize', resize);
   if (window.ResizeObserver) new ResizeObserver(resize).observe(courtArea);
-
-  // Первый запуск — короткое объяснение, что вообще делать
-  const HELLO_KEY = 'padel_hello_v1';
-  const helloEl = document.getElementById('hello');
-  try {
-    if (!localStorage.getItem(HELLO_KEY)) helloEl.hidden = false;
-  } catch (_) {}
-  document.getElementById('hello-ok').addEventListener('click', () => {
-    helloEl.hidden = true; haptic('medium');
-    try { localStorage.setItem(HELLO_KEY, '1'); } catch (_) {}
-  });
 
   const restored = restoreBoard();
   loadFrame(restored ? state.current : 0);
